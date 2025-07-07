@@ -1,0 +1,22 @@
+# Mac/Windowsのシステムファイル
+.DS_Store
+Thumbs.db
+
+# Python関連
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Condaや仮想環境のフォルダ
+env/
+venv/
+*.env
+
+# データとアウトプットを全て無視
+data/*
+!data/process_scripts/
+output/
+
+# ログファイルや一時ファイル
+*.log
+temp/
