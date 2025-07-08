@@ -13,7 +13,7 @@ spm_jobman('initcfg');
 %%(1)パラメータ設定
 %---------------------------------------------------------------
 %--- 基本パス設定 ---
-project_dir = '/home/matsuda/ad_project/data'; %プロジェクトフォルダへのパス
+project_dir = '/media/sf_ad_project/data'; %プロジェクトフォルダへのパス
 raw_data_dir = fullfile(project_dir, 'raw_data'); %生データ(DICOM)ディレクトリ
 bids_nifti_dir = fullfile(project_dir, 'derivatives', 'bids_nifti'); %NIfTI化データ保存先
 fs_subjects_dir = fullfile(project_dir, 'derivatives', 'freesurfer_subjects'); %FreeSurferのSUBJECTS_DIR
@@ -50,12 +50,12 @@ template_dartel  = fullfile(script_dir, 'spm_batch_templates', 'template_dartel_
 
 %% (2) 処理の選択 (実行したいステップを true にする)
 % -------------------------------------------------------------------------
-flags.run_step1_dicom_to_nifti    = true;  % DICOM -> NIfTI 変換
-flags.run_step2_run_recon_all     = true;  % FreeSurfer recon-all 実行
-flags.run_step3_prepare_nifti     = false; % FreeSurfer出力 -> NIfTI/マスク作成
-flags.run_step4_segment           = false; % SPM Segment
-flags.run_step5_dartel_template   = false; % DARTEL Template 作成
-flags.run_step6_normalize         = false; % Normalise to MNI
+flags.run_step1_dicom_to_nifti    = true; % DICOM -> NIfTI 変換
+flags.run_step2_run_recon_all     = true; % FreeSurfer recon-all 実行
+flags.run_step3_prepare_nifti     = true; % FreeSurfer出力 -> NIfTI/マスク作成
+flags.run_step4_segment           = true; % SPM Segment
+flags.run_step5_dartel_template   = true; % DARTEL Template 作成
+flags.run_step6_normalize         = true; % Normalise to MNI
 
 
 %% (3) パイプライン実行
@@ -106,17 +106,24 @@ if flags.run_step6_normalize
     
     % JOB 1: 元のT1w画像を正規化（平滑化あり、変調なし）
     % 可視化や、他の空間のマスクを重ねる際などに使用
-    %{
+    %
     norm_jobs{end+1} = struct(...
         'file_pattern', '*_T1w.nii', ...       % 対象ファイル (anatフォルダ内)
         'input_folder_suffix', 'anat', ...         % 入力ファイルがあるフォルダ
         'preserve', 1, ...                         % 1: 変調あり (体積情報を保持)
         'fwhm', [0 0 0] ...                        % 平滑化カーネルサイズ 0は平滑化なし
     );
-    %}
+    %
 
     % JOB 2: 部位マスクを正規化（平滑化なし、変調なし、最近傍補間）
     % マスク画像は値が離散的なので、補間や平滑化は行わないのが鉄則
+    norm_jobs{end+1} = struct(...
+        'file_pattern', '*_mask-hippocampus.nii', ...
+        'input_folder_suffix', 'mask', ...
+        'preserve', 0, ...                         
+        'fwhm', [0 0 0] ...
+    );
+
     norm_jobs{end+1} = struct(...
         'file_pattern', '*_mask-prefrontal-cortex.nii', ...
         'input_folder_suffix', 'mask', ...
@@ -155,14 +162,14 @@ if flags.run_step6_normalize
     
     % JOB 3: 灰白質(c1)画像を正規化（平滑化あり、変調あり）
     % VBM解析の入力として最も一般的に用いられるデータ
-    %{
+    %
     norm_jobs{end+1} = struct(...
         'file_pattern', 'c1*_T1w.nii', ...
         'input_folder_suffix', 'spm/seg', ...
         'preserve', 0, ...
         'fwhm', [0 0 0] ...
     );
-    %}
+    %
 
     % JOB 4: 白質(c2)画像を正規化（平滑化あり、変調あり）
     %{

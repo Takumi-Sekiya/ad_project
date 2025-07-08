@@ -7,7 +7,7 @@ function func_02_run_recon_all(nifti_dir, fs_subjects_dir, subject_ids)
         fprintf('Step 2: Starting recon-all for subject: %s\n', sub_id);
 
         input_nifti = fullfile(nifti_dir, sub_id, [sub_id, '_T1w.nii']);
-        output_fs_dir = fullfile(fs_subject_dir, sub_id);
+        output_fs_dir = fullfile(fs_subjects_dir, sub_id);
 
         if exist(fullfile(output_fs_dir, 'scripts', 'recon-all.done'), 'file')
             fprintf('recon-all for %s has already completed. Skipping.\n', sub_id);
@@ -21,7 +21,7 @@ function func_02_run_recon_all(nifti_dir, fs_subjects_dir, subject_ids)
 
         recon_cmd = sprintf('recon-all -s %s -i %s -all', sub_id, input_nifti);
 
-        log_dir = fullfile(fs_subjectsdir, 'logs');
+        log_dir = fullfile(fs_subjects_dir, 'logs');
         if ~exist(log_dir, 'dir'), mkdir(log_dir); end
         log_file = fullfile(log_dir, [sub_id, 'recon-all.log']);
 
