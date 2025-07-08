@@ -1,4 +1,4 @@
-function func_04_normalize(processed_data_dir, subject_ids, dartel_template_dir, job_params)
+function func_06_normalize(processed_data_dir, subject_ids, dartel_template_dir, job_params)
     
     template_file = spm_select('FPList', dartel_template_dir, '^Template_6\.nii$');
     if isempty(template_file), error('Template_6.nii not found in %s', dartel_template_dir); end

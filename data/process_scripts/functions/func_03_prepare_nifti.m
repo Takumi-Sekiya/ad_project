@@ -1,4 +1,4 @@
-function func_01_prepare_nifti(fs_subjects_dir, output_root_dir, subject_ids, roi_sets)
+function func_03_prepare_nifti(fs_subjects_dir, output_root_dir, subject_ids, roi_sets)
     parfor i = 1:length(subject_ids)
         sub_id = subject_ids{i};
         fprintf('Processing subject: %s\n', sub_id);

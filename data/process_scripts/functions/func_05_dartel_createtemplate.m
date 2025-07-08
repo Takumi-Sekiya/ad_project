@@ -1,4 +1,4 @@
-function func_03_dartel_createtemplate(processed_data_dir, subject_ids, template_path)
+function func_05_dartel_createtemplate(processed_data_dir, subject_ids, template_path)
     s = load(template_path);
     matlabbatch = s.matlabbatch;
 

@@ -13,30 +13,19 @@ spm_jobman('initcfg');
 %%(1)パラメータ設定
 %---------------------------------------------------------------
 %--- 基本パス設定 ---
-project_dir = '/media/sf_data'; %プロジェクトフォルダへのパス
+project_dir = '/home/matsuda/ad_project/data'; %プロジェクトフォルダへのパス
+raw_data_dir = fullfile(project_dir, 'raw_data'); %生データ(DICOM)ディレクトリ
+bids_nifti_dir = fullfile(project_dir, 'derivatives', 'bids_nifti'); %NIfTI化データ保存先
 fs_subjects_dir = fullfile(project_dir, 'derivatives', 'freesurfer_subjects'); %FreeSurferのSUBJECTS_DIR
 processed_data_dir = fullfile(project_dir, 'derivatives', 'processed_data');
 script_dir = fullfile(project_dir, 'process_scripts');
 addpath(fullfile(script_dir, 'functions'));
 
 %--- 被験者リスト ---
-%特定の接頭辞がある場合はこちらを使用
-%
-d = dir(fullfile(fs_subjects_dir, 'YGT_*'));
-isub = [d(:).isdir];
-subject_ids = {d(isub).name}';
-%
-%すべての被験者からリストを自動生成
-%{
-d = dir(fs_subject_dir);
+d = dir(fullfile(raw_data_dir, 'YGT_*'));
 isub = [d(:).isdir];
 subject_ids = {d(isub).name}';
 subject_ids(ismember(subject_ids,{'.','..'})) = [];
-%}
-%特定の被験者のみを実行したい場合は, 手動で設定
-%{
-subject_ids = {'YGT_DAM_0003_61_1_1'}; %例
-%}
 
 %--- ROIマスク設定 ---
 %FreeSurfer(aparc+aseg.mgz)のラベル地に基づいてマスクを作成
@@ -61,10 +50,12 @@ template_dartel  = fullfile(script_dir, 'spm_batch_templates', 'template_dartel_
 
 %% (2) 処理の選択 (実行したいステップを true にする)
 % -------------------------------------------------------------------------
-flags.run_step1_prepare_nifti     = false; % FreeSurfer -> NIfTI変換, ROIマスク作成
-flags.run_step2_segment           = false; % SPM Segment
-flags.run_step3_dartel_template   = false; % DARTEL Template 作成
-flags.run_step4_normalize         = true; % Normalise to MNI
+flags.run_step1_dicom_to_nifti    = true;  % DICOM -> NIfTI 変換
+flags.run_step2_run_recon_all     = true;  % FreeSurfer recon-all 実行
+flags.run_step3_prepare_nifti     = false; % FreeSurfer出力 -> NIfTI/マスク作成
+flags.run_step4_segment           = false; % SPM Segment
+flags.run_step5_dartel_template   = false; % DARTEL Template 作成
+flags.run_step6_normalize         = false; % Normalise to MNI
 
 
 %% (3) パイプライン実行
@@ -72,27 +63,39 @@ flags.run_step4_normalize         = true; % Normalise to MNI
 % --- 並列処理の準備 ---
 setup_parpool();
 
-% --- Step 1: NIfTIファイルの準備 ---
-if flags.run_step1_prepare_nifti
-    fprintf('\n===== Step 1: Preparing NIfTI files =====\n');
-    func_01_prepare_nifti(fs_subjects_dir, processed_data_dir, subject_ids, roi_sets);
+% --- Step 1: DICOM to NIfTI --- %%% 追加 %%%
+if flags.run_step1_dicom_to_nifti
+    fprintf('\n===== Step 1: Converting DICOM to NIfTI files =====\n');
+    func_01_dicom_to_nifti(raw_data_dir, bids_nifti_dir, subject_ids);
 end
 
-% --- Step 2: SPM Segment ---
-if flags.run_step2_segment
-    fprintf('\n===== Step 2: Running SPM Segmentation =====\n');
-    func_02_segment(processed_data_dir, subject_ids, template_segment);
+% --- Step 2: Run FreeSurfer recon-all --- %%% 追加 %%%
+if flags.run_step2_run_recon_all
+    fprintf('\n===== Step 2: Running FreeSurfer recon-all =====\n');
+    func_02_run_recon_all(bids_nifti_dir, fs_subjects_dir, subject_ids);
 end
 
-% --- Step 3: DARTEL Template 作成 ---
-if flags.run_step3_dartel_template
-    fprintf('\n===== Step 3: Creating DARTEL Template =====\n');
-    func_03_dartel_createtemplate(processed_data_dir, subject_ids, template_dartel);
+% --- Step 3: NIfTIファイルの準備 ---
+if flags.run_step3_prepare_nifti
+    fprintf('\n===== Step 3: Preparing NIfTI files =====\n');
+    func_03_prepare_nifti(fs_subjects_dir, processed_data_dir, subject_ids, roi_sets);
 end
 
-% --- Step 4: Normalise to MNI ---
-if flags.run_step4_normalize
-    fprintf('\n===== Step 4: Normalizing files to MNI space =====\n');
+% --- Step 4: SPM Segment ---
+if flags.run_step4_segment
+    fprintf('\n===== Step 4: Running SPM Segmentation =====\n');
+    func_04_segment(processed_data_dir, subject_ids, template_segment);
+end
+
+% --- Step 5: DARTEL Template 作成 ---
+if flags.run_step5_dartel_template
+    fprintf('\n===== Step 5: Creating DARTEL Template =====\n');
+    func_05_dartel_createtemplate(processed_data_dir, subject_ids, template_dartel);
+end
+
+% --- Step 6: Normalise to MNI ---
+if flags.run_step6_normalize
+    fprintf('\n===== Step 6: Normalizing files to MNI space =====\n');
     dartel_template_dir = fullfile(processed_data_dir, 'dartel_template');
 
     % --- 正規化ジョブの定義 ---
@@ -124,28 +127,28 @@ if flags.run_step4_normalize
     norm_jobs{end+1} = struct(...
         'file_pattern', '*_mask-parietal-lobe.nii', ...
         'input_folder_suffix', 'mask', ...
-        'preserve', 0, ...                         % 0: 変調なし
+        'preserve', 0, ...                         
         'fwhm', [0 0 0] ...
     );
 
     norm_jobs{end+1} = struct(...
         'file_pattern', '*_mask-occipital-lobe.nii', ...
         'input_folder_suffix', 'mask', ...
-        'preserve', 0, ...                         % 0: 変調なし
+        'preserve', 0, ...                         
         'fwhm', [0 0 0] ...
     );
 
     norm_jobs{end+1} = struct(...
         'file_pattern', '*_mask-temporal-lobe.nii', ...
         'input_folder_suffix', 'mask', ...
-        'preserve', 0, ...                         % 0: 変調なし
+        'preserve', 0, ...                         
         'fwhm', [0 0 0] ...
     );
 
     norm_jobs{end+1} = struct(...
         'file_pattern', '*_mask-brain-stem.nii', ...
         'input_folder_suffix', 'mask', ...
-        'preserve', 0, ...                         % 0: 変調なし
+        'preserve', 0, ...                         
         'fwhm', [0 0 0] ...
     );
 
@@ -175,7 +178,7 @@ if flags.run_step4_normalize
     for i = 1:length(norm_jobs)
         job = norm_jobs{i};
         fprintf('\n--- Running Normalization Job %d/%d: %s ---\n', i, length(norm_jobs), job.file_pattern);
-        func_04_normalize(processed_data_dir, subject_ids, dartel_template_dir, job);
+        func_06_normalize(processed_data_dir, subject_ids, dartel_template_dir, job);
     end
 end
 

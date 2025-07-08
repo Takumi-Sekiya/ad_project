@@ -1,4 +1,4 @@
-function func_02_segment(processed_data_dir, subject_ids, template_path)
+function func_04_segment(processed_data_dir, subject_ids, template_path)
     s = load(template_path);
     matlabbatch_template = s.matlabbatch;
 
