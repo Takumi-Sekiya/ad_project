@@ -1,8 +1,5 @@
 function func_01_dicom_to_nifti(raw_data_dir, nifti_out_dir, subject_ids)
     parfor i = 1:length(subject_ids)
-        spm('Defaults', 'fmri');
-        spm_jobman('initcfg');
-
         sub_id = subject_ids{i};
         fprintf('Step 1: Converting DICOM to NIFTI for subject: %s\n', sub_id);
 
@@ -20,21 +17,21 @@ function func_01_dicom_to_nifti(raw_data_dir, nifti_out_dir, subject_ids)
             continue;
         end
 
-        dicom_files = spm_select('FPList', dicom_in_path, '.*');
-        if isempty(dicom_files)
-            warning('No DICOM files found for %s. Skipping.', sub_id);
+        if ~exist(dicom_in_path, 'dir')
+            warning('Input DICOM directory not found for %s. Skipping.', sub_id);
             continue;
         end
 
-        converted_file = spm_select('FPList', nifti_out_path, '^f.*\.nii$');
-        if isempty(converted_file)
-            converted_file = spm_select('FPList', nifti_out_path, '.*\.nii$');
-        end
+        cmd = sprintf('dcm2niix -o %s -f %%i_T1w -b y -z n %s', ...
+                      nifti_out_path, ...
+                      dicom_in_path);
+        
+        [status, cmdout] = system(cmd);
 
-        if ~isempty(converted_file)
-            movefile(strtrim(converted_file(1,:)), output_nifti);
+        if status == 0
+            fprintf('dcm2niix completed for subject %s.\n', sub_id);
         else
-            warning('NIfTI conversion failed for %s.', sub_id);
+            warning('dcm2niix may have failed for subject %s. See output below:\n%s', sub_id, cmdout);
         end
     end
 end
