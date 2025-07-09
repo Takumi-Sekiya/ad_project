@@ -34,9 +34,7 @@ function func_05_dartel_createtemplate(processed_data_dir, subject_ids, template
     spm_jobman('run', matlabbatch);
     
     % --- ファイルを移動 ---
-    % DARTELは入力ファイル(rc1/rc2)と同じ場所にu_*とTemplate_*を出力する
     [source_dir, ~, ~] = fileparts(rc1_files{1});
-    movefile(fullfile(source_dir, 'u_*.nii'), dartel_dir);
     movefile(fullfile(source_dir, 'Template_*.nii'), dartel_dir);
     
     fprintf('DARTEL files moved to %s\n', dartel_dir);
