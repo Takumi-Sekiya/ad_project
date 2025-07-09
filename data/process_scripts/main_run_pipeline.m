@@ -22,7 +22,14 @@ script_dir = fullfile(project_dir, 'process_scripts');
 addpath(fullfile(script_dir, 'functions'));
 
 %--- 被験者リスト ---
-d = dir(fullfile(raw_data_dir, 'YGT_*'));
+prefixes = {'YGT_*', 'SND_*'}; %抽出する接頭辞のパターンを指定
+d = [];
+
+for i = 1:length(prefixes)
+    d_temp = dir(fullfile(raw_data_dir, prefixes{i}));
+    d = [d; d_temp];
+end
+
 isub = [d(:).isdir];
 subject_ids = {d(isub).name}';
 subject_ids(ismember(subject_ids,{'.','..'})) = [];
