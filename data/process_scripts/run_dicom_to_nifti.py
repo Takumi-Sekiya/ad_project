@@ -50,7 +50,7 @@ def main():
     
     print(f"Found {len(subject_dirs_to_process)} subjects. Starting conversion with {MAX_WORKERS} processes...")
 
-    with ProcessPoolExecutor(max_owrkers=MAX_WORKERS) as executor:
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = [executor.submit(convert_subject, sub_dir) for sub_dir in subject_dirs_to_process]
 
         for future in as_completed(futures):
