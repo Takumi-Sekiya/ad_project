@@ -7,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 # --- パラメータ設定 ---
 PROJECT_ROOT = Path(__file__).parent.parent
-RAW_DATA_DIR = PROJECT_ROOT / 'data' / 'raw_data'
-NIFTI_OUT_DIR = PROJECT_ROOT / 'data' / 'derivatives' / 'bids_nifti'
+RAW_DATA_DIR = PROJECT_ROOT / 'raw_data'
+NIFTI_OUT_DIR = PROJECT_ROOT / 'derivatives' / 'bids_nifti'
 
 SUBJECT_PREFIXES = ['YGT_*', 'SND_*']
 
@@ -83,7 +83,7 @@ def process_subject(subject_id: str):
         cmd = [
             'dcm2niix',
             '-o', str(nifti_out_path),
-            '-f', f"{subject_id}_T1w.nii",
+            '-f', f"{subject_id}_T1w",
             '-b', 'y',
             '-z', 'n',
             str(dicom_in_path)
