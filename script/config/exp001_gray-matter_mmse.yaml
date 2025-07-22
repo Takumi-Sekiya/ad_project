@@ -1,0 +1,27 @@
+# 1. 実験の基本情報
+experiment_name: "MMSE_Prediction"
+run_name: "Simple3DCNN_on_Gray-matter"
+
+# 2. データの指定
+data:
+  pickle_path: "/home/matsuda/ad_project/data/pickle_data/dataset_gray-matter.pkl"
+  target_variable: "MMSE"
+  tabular_input_features: []
+
+# 3. モデルの指定
+model:
+  name: "Simple3DCNN"
+  params: 
+    dropout_rate: 0.3
+
+# 4. 学習のパラメータ
+training:
+  optimizer: "Adam"
+  learning_rate: 0.0001
+  loss: "mean_squared_error"
+  batch_size: 8
+  epochs: 100
+
+# 5. 再現性のための設定
+environment:
+  seed: 42
