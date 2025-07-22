@@ -16,6 +16,7 @@ venv/
 data/*
 !data/process_scripts/
 output/
+mlruns/
 
 # ログファイルや一時ファイル
 *.log

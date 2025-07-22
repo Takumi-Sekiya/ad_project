@@ -13,7 +13,7 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
 
     # 2. オプティマイザとモデルのコンパイル
     optimizer = tf.keras.optimizers.Adam(learning_rate=config['training']['learning_rate'])
-    model.conpile(optimizer=optimizer, loss=config['training']['loss'])
+    model.compile(optimizer=optimizer, loss=config['training']['loss'])
 
     # 3. データセットのバッチ化とシャッフル
     batch_size = config['training']['batch_size']
