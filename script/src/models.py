@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv3D, MaxPooling3D, Flatten, Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import Input, Conv3D, MaxPooling3D, GlobalAveragePooling3D, Dense, Dropout, BatchNormalization
+from tensorflow.keras.initializers import HeNormal
 
 def build_simple_3dcnn(input_shape: tuple, config: dict) -> Model:
     """
@@ -9,14 +10,39 @@ def build_simple_3dcnn(input_shape: tuple, config: dict) -> Model:
 
     dropout_rate = config['model']['params']['dropout_rate']
 
+    # 画像入力
     img_input = Input(shape=input_shape, name='img_input')
 
-    x = Conv3D()
+    x = Conv3D(32, (5, 5, 5), padding='same', activation='relu')(img_input)
+    x = Conv3D(32, (5, 5, 5), padding='same', activation='relu')(x)
+    x = MaxPooling3D((2, 2, 2), padding='same')(x)
+    x = BatchNormalization()(x)
 
+    x = Conv3D(64, (3, 3, 3), padding='same', activation='relu')(x)
+    x = Conv3D(64, (3, 3, 3), padding='same', activation='relu')(x)
+    x = MaxPooling3D((2, 2, 2), padding='same')(x)
+    x = BatchNormalization()(x)
 
+    x = Conv3D(128, (3, 3, 3), padding='same', activation='relu')(x)
+    x = Conv3D(128, (3, 3, 3), padding='same', activation='relu')(x)
+    x = MaxPooling3D((2, 2, 2), padding='same')(x)
+    x = BatchNormalization()(x)
 
+    x = Conv3D(256, (3, 3, 3), padding='same', activation='relu')(x)
+    x = Conv3D(256, (3, 3, 3), padding='same', activation='relu')(x)
+    x = MaxPooling3D((2, 2, 2), padding='same')(x)
+    x = BatchNormalization()(x)
 
-    output = Dense(1, name='output')(x)
+    x = Conv3D(512, (1, 1, 1), padding='same', activation='relu')(x)
+    x = GlobalAveragePooling3D()(x)
+
+    x = Dense(100, activation='relu', kernel_initializer=HeNormal())(x)
+    x = Dropout(dropout_rate)(x)
+    x = Dense(60, activation='linear', kernel_initializer=HeNormal())(x)
+    x = Dropout(dropout_rate)(x)
+    x = Dense(20, activation='linear', kernel_initializer=HeNormal())(x)
+
+    output = Dense(1, activation='linear', name='output')(x)
 
     model = Model(inputs=img_input, outputs=output)
 
