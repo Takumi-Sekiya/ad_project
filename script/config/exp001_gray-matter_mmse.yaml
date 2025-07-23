@@ -17,10 +17,29 @@ model:
 # 4. 学習のパラメータ
 training:
   optimizer: "Adam"
-  learning_rate: 0.0001
   loss: "mean_squared_error"
   batch_size: 8
-  epochs: 100
+  stages:
+    - stage_name: "WarmupPhase"
+      epochs: 50
+      learning_rate: 0.001
+      callbacks: []
+    
+    - stage_name: "FineTuningPhase"
+      epochs: 50
+      learning_rate: 0.001
+      callbacks:
+        - name: "EarlyStopping"
+          params:
+            monitor: "val_loss"
+            patience: 15
+            verbose: 1
+        - name: "ReduceLROnPlateau"
+          params: 
+            monitor: "val_loss"
+            factor: 0.5
+            patience: 5
+            min_lr: 0.00001
 
 # 5. 再現性のための設定
 environment:

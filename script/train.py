@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from src.utils import set_seed
 from src.data_loader import get_datasets
-from src.models import build_simple_3dcnn
+from src.models import build_model
 from src.engine import run_training
 
 def main(config_path: str):
@@ -29,7 +29,7 @@ def main(config_path: str):
 
         # 5. モデルを構築
         img_shape = next(iter(train_ds))[0].shape
-        model = build_simple_3dcnn(input_shape=img_shape, config=config)
+        model = build_model(input_shape=img_shape, config=config)
         model.summary()
 
         # 6. 学習と評価を実行
