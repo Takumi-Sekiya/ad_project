@@ -1,9 +1,53 @@
+import os
 import mlflow
 import tensorflow as tf
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+
 from .callbacks import create_callbacks_from_config
+
+plt.rcParams['font.family'] = ['Arial', 'MS Gothic']
+plt.rcParams.update({
+    'axes.labelsize': 24,     # 軸ラベルのサイズ
+    'xtick.labelsize': 18,    # x軸目盛りのサイズ
+    'ytick.labelsize': 18,    # y軸目盛りのサイズ
+    'axes.titlesize': 24      # タイトルのサイズ
+})
+
+def create_optimizer(config: dict) -> tf.keras.optimizers.Optimizer:
+    """
+    設定ファイルからOptimizerを動的に生成する
+    """
+    opt_config = config['training']['optimizer']
+    opt_name = opt_config['name']
+    opt_params = opt_config.get('params', {})
+
+    try:
+        OptimizerClass = getattr(tf.keras.optimizers, opt_name)
+    except AttributeError:
+        raise ValueError(f"Optimizer '{opt_name}' not found in tf.keras.optimizers.")
+    
+    return OptimizerClass(**opt_params)
+
+def save_scatter_plot(y_true, y_pred, title, file_path):
+    """
+    散布図を生成し, 指定されたパスに保存する
+    """
+    r2 = r2_score(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.scatter(y_true, y_pred, alpha=1, c='blue')
+    ax.plot([0, y_true.max()*1.05], [0, y_true.max()*1.05], c='black')
+    ax.set_xlabel("True Values")
+    ax.set_ylabel("Predicted Values")
+    ax.set_title(f"{title}\n(R2 Score: {r2:.4f})")
+    ax.gtid(True)
+    fig.tight_layout()
+    fig.savefig(file_path)
+    plt.close(fig)
+    return fig
+
 
 def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
     """
@@ -13,8 +57,7 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
     mlflow.tensorflow.autolog(log_models=True, disable=False)
 
     # 2. オプティマイザとモデルのコンパイル
-    initial_lr = config['training']['stages'][0]['learning_rate']
-    optimizer = tf.keras.optimizers.Adam(learning_rate=initial_lr)
+    optimizer = create_optimizer(config)
     model.compile(optimizer=optimizer, loss=config['training']['loss'])
 
     # 3. データセットのバッチ化とシャッフル
@@ -48,27 +91,42 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
         )
         total_epochs_done += epochs_in_stage
 
-    # 5. 学習後の最終評価と手動ロギング
-    y_true = np.concatenate([y for x, y in test_dataset], axis=0)
-    y_pred = model.predict(test_dataset).flatten()
+    # 5. 学習後モデルの評価
+    print("\n--- Final Evaluation & Saving Artifacts ---")
 
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    r2 = r2_score(y_true, y_pred)
+    # 5-1. ローカルの出力ディレクトリを作成
+    run_name = config['run_name']
+    output_dir = os.path.join("output", run_name)
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Artifacts will be saved to: {output_dir}")
 
-    print(f"Final Test RMSE: {rmse:.4f}")
-    print(f"Final Test R2-Score: {r2:.4f}")
+    # 5-2. 訓練データとテストデータで予測を実行
+    y_train_true = np.concatenate([y for _, y in train_ds.batch(batch_size)])
+    y_train_pred = model.predict(train_ds.batch(batch_size)).flatten()
 
-    # MLflowにカスタム指標として記録
+    y_test_true = np.concatenate([y for _, y in test_dataset])
+    y_test_pred = model.predict(test_dataset).flatten()
+
+    # 5-3. Excelファイルに予測結果を保存
+    excel_path = os.path.join(output_dir, "predictions.xlsx")
+    with pd.ExcelWriter(excel_path) as writer:
+        train_df = pd.DataFrame({'True': y_train_true, 'Predicted': y_train_pred})
+        train_df.to_excel(writer, sheet_name='Train_Data', index=False)
+
+        test_df = pd.DataFrame({'True': y_test_true, 'Predicted': y_test_pred})
+        test_df.to_excel(writer, sheet_name='Test_Data', index=False)
+    
+    # 5-4. プロット図を生成し, ローカルとMLflowに保存
+    train_plot_path = os.path.join(output_dir, "train_scatter_plot.png")
+    train_fig = save_scatter_plot(y_train_true, y_train_pred, "Train Data Scatter Plot", train_plot_path)
+    mlflow.log_figure(train_fig, "train_scatter_plot.png")
+
+    test_plot_path = os.path.join(output_dir, "test_scatter_plot.png")
+    test_fig = save_scatter_plot(y_test_true, y_test_pred, "Test Data Scatter Plot", test_plot_path)
+    mlflow.log_figure(test_fig, "test_scatter_plot.png")
+
+    # 5-5. MLflowに最終指標を記録
+    rmse = np.sqrt(mean_squared_error(y_test_true, y_test_pred))
+    r2 = r2_score(y_test_true, y_test_pred)
     mlflow.log_metric("final_test_rmse", rmse)
     mlflow.log_metric("final_test_r2", r2)
-
-    # 6. 結果の可視化とアーティファクト保存
-    fig, ax = plt.subplots()
-    ax.scatter(y_true, y_pred, alpha=0.5)
-    ax.plot([y_true.min(), y_true.max()], [y_true.min(), y_pred.max()], 'r--')
-    ax.set_xlabel("True Values")
-    ax.set_ylabel("Predicted Values")
-    ax.set_title(f"Prediction Scatter Plot (R2: {r2:.3f})")
-
-    # MLflowにプロット画像を保存
-    mlflow.log_figure(fig, "prediction_scatter_plot.png")
