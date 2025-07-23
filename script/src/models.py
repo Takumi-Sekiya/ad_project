@@ -47,3 +47,19 @@ def build_simple_3dcnn(input_shape: tuple, config: dict) -> Model:
     model = Model(inputs=img_input, outputs=output)
 
     return model
+
+MODEL_REGISTRY = {
+    "Simple3DCNN": build_simple_3dcnn,
+    # 新しいモデルを追加
+}
+
+def build_model(input_shape: tuple, config: dict) -> Model:
+    """
+    設定ファイルの情報に基づき, 指定されたモデルを動的に構築する
+    """
+    model_name = config['model']['name']
+    if model_name not in MODEL_REGISTRY:
+        raise ValueError(f"Model '{model_name}' is not registered. Available models: {list(MODEL_REGISTRY.keys())}")
+    
+    build_fn = MODEL_REGISTRY[model_name]
+    return build_fn(input_shape=input_shape, config=config)
