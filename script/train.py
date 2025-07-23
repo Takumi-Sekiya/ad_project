@@ -40,3 +40,5 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, required=True, help='Path to the config file')
     args = parser.parse_args()
     main(args.config)
+
+# python script/train.py --config script/config/exp001_gray-matter_mmse.yaml

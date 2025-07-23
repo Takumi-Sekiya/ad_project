@@ -30,14 +30,14 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
 
         # 4-1. 学習率の動的更新
         new_lr = stage_config['learning_rate']
-        tf.keras.backend.set_value(model.optimizer.lr, new_lr)
-        print(f"Set learning rate to: {model.optimizer.lr.numpy():.6f}")
+        model.optimizer.learning_rate.assign(new_lr)
+        print(f"Set learning rate to: {model.optimizer.learning_rate.numpy():.6f}")
 
         # 4-2. コールバックを動的に生成
         stage_callbacks = create_callbacks_from_config(stage_config.get('callbacks', []))
 
         # 4-3. model.fitの実行
-        epochs_in_stage = stage_config['epodhs']
+        epochs_in_stage = stage_config['epochs']
         model.fit(
             train_dataset,
             epochs=total_epochs_done + epochs_in_stage,
