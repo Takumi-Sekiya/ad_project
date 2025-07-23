@@ -38,6 +38,7 @@ training:
           params:
             monitor: "val_loss"
             patience: 15
+            restore_best_weights: True
             verbose: 1
         - name: "ReduceLROnPlateau"
           params: 

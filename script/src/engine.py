@@ -42,7 +42,7 @@ def save_scatter_plot(y_true, y_pred, title, file_path):
     ax.set_xlabel("True Values")
     ax.set_ylabel("Predicted Values")
     ax.set_title(f"{title}\n(R2 Score: {r2:.4f})")
-    ax.gtid(True)
+    ax.grid(True)
     fig.tight_layout()
     fig.savefig(file_path)
     plt.close(fig)
