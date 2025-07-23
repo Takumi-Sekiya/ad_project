@@ -1,5 +1,6 @@
 import pickle 
 import numpy as np
+from pathlib import Path
 import tensorflow as tf
 
 def get_datasets(config: dict):
@@ -8,7 +9,8 @@ def get_datasets(config: dict):
     """
 
     # Pickleファイルをロード
-    with open(config['data']['pickle_path'], 'rb') as f:
+    pickle_path = Path.home() / "ad_project" / config['data']['pickle_path']
+    with open(pickle_path, 'rb') as f:
         data = pickle.load(f)
 
     # 目的変数名の取得
