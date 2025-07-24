@@ -66,7 +66,7 @@ EXCEL_COLUMNS = ['MMSE', 'CDR', 'HDSR']
 TEST_SIZE = 0.2
 
 # 出力ファイル名
-OUTPUT_PICKLE_FILE = os.path.join(BASE_DIR, f'data/pickle_data/dataset_{MASK_NAME}.pkl')
+OUTPUT_PICKLE_FILE = os.path.join(BASE_DIR, f'data/processed/dataset_{MASK_NAME}.pkl')
 
 # --- 3. データ処理関数 ---
 def load_and_match_data(data_dir, excel_path, path_templates, excel_columns):
