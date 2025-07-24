@@ -14,16 +14,16 @@ def main():
     """
     複数の生エクセルデータからマッピングファイルに基づき, 単一の構造化csvファイルを生成する.
     """
-    print("--- 処理を開始 ---")
+    print("処理を開始 ...")
 
     # 1. マッピングファイルの読み込み
     try:
         with open(MAPPING_FILE, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
-        source_file_map = config.get("source_files", {})
+        source_data_list = config.get("source_data", {})
         final_columns_info = config.get("final_columns", {})
-        if not source_file_map or not final_columns_info:
-            print(f"エラー: {MAPPING_FILE} の形式が正しくありません. 'source_files' と 'final_columns' のキーが必要です.")
+        if not source_data_list or not final_columns_info:
+            print(f"エラー: {MAPPING_FILE} の形式が正しくありません. 'source_data' と 'final_columns' のキーが必要です.")
             sys.exit(1)
 
     except FileNotFoundError:
@@ -34,14 +34,27 @@ def main():
     processed_dfs = []
 
     # 2. ファイルごとに整形処理
-    for filename, column_map in source_file_map.items():
+    print("ファイルの読み込み, 整形 ...")
+    for source_info in source_data_list:
+        filename = source_info.get("filename")
+        sheet_name = source_info.get("sheet_name", 0)
+        column_map = source_info.get("columns")
+
+        if not filename or not column_map:
+            print(f"警告: 'filename' または 'columns' の設定が不完全な項目があります。スキップします。")
+            continue
+
         file_path = RAW_DATA_DIR / filename
         if not file_path.exists():
             print(f"警告: {file_path} が見つかりません. スキップします.")
             continue
 
-        print(f"--- 処理中: {filename} ---")
-        df = pd.read_excel(file_path)
+        print(f"処理中: {filename} (シート: {sheet_name if sheet_name != 0 else '最初のシート'})")
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+        except Exception as e:
+            print(f"  エラー: {filename} のシート '{sheet_name}' の読み込みに失敗しました。詳細: {e}")
+            continue
 
         # マッピングを反転
         rename_dict = {v: k for k, v in column_map.items()}
