@@ -1,3 +1,7 @@
+# script/config/exp001_gray-matter_mmse.yaml
+# input: gray matter
+# output: MMSE
+
 # 1. 実験の基本情報
 experiment_name: "MMSE_Prediction"
 run_name: "Simple3DCNN_on_Gray-matter_to_MMSE"

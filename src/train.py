@@ -3,10 +3,10 @@ import yaml
 import mlflow
 import tensorflow as tf
 
-from src.utils import set_seed
-from src.data_loader import get_datasets
-from src.models import build_model
-from src.engine import run_training
+from functions.utils import set_seed
+from functions.data_loader import get_datasets
+from functions.models import build_model
+from functions.engine import run_training
 
 def main(config_path: str):
     # 1. 設定ファイルを読み込む
@@ -41,4 +41,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     main(args.config)
 
-# python script/train.py --config script/config/exp001_gray-matter_mmse.yaml
+# python script/train.py --config 
