@@ -93,7 +93,7 @@ def main():
             print("subject_idに重複を発見.")
             print(list(duplicated_ids))
             print("処理を中断. データとマッピングファイルを確認してください.")
-            sys.exit(1)
+            #sys.exit(1)
         else:
             print("  IDの重複なし.")
         

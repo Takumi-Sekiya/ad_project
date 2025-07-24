@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+from pathlib import Path
 import nibabel as nib
 from sklearn.model_selection import train_test_split
 import pickle
@@ -35,9 +36,9 @@ def normalize_intensity(array):
 
 #--- 2. 設定セクション ---
 #ベースディレクトリ
-BASE_DIR = '/home/matsuda/ad_project'
-PROCESSED_DATA_DIR = os.path.join(BASE_DIR, 'data/derivatives/processed_data')
-EXCEL_PATH = os.path.join(BASE_DIR, 'data/raw_data/■■MRI-ASL症例リスト入力書式2024年10月21日作成版（山大版）20241212最終（匿名化）.xlsx')
+BASE_DIR = Path(__file__).resolve().parent.parent
+PROCESSED_DATA_DIR = BASE_DIR / 'data' / 'derivatives' / 'processed_data'
+CSV_PATH = BASE_DIR / 'data' / 'processed' / 'structured_data.csv'
 
 #--- 実験に合わせて変更するパラメータ ---
 # 使用する画像のパスを定義するテンプレート
@@ -60,18 +61,18 @@ MASK_NAME = 'brain-stem'
 ROI_PROCESSING_MODE = 'crop_and_pad' 
 
 # 予測したい指標（Excelファイルのカラム名）
-EXCEL_COLUMNS = ['MMSE', 'CDR', 'HDSR']
+EXCEL_COLUMNS = ['MMSE', 'CDR', 'gm_atrophy', 'severity']
 
 # データ分割の割合
 TEST_SIZE = 0.2
 
 # 出力ファイル名
-OUTPUT_PICKLE_FILE = os.path.join(BASE_DIR, f'data/processed/dataset_{MASK_NAME}.pkl')
+OUTPUT_PICKLE_FILE = BASE_DIR / 'data' / 'processed' / f'dataset_{MASK_NAME}.pkl'
 
 # --- 3. データ処理関数 ---
 def load_and_match_data(data_dir, excel_path, path_templates, excel_columns):
     try:
-        all_sheets_dict = pd.read_excel(excel_path, sheet_name=None, dtype={'研究用匿名化ID': str})
+        all_sheets_dict = pd.read_excel(excel_path, sheet_name=None, dtype={'subject_id': str})
     except FileNotFoundError:
         print(f"エラー: 臨床データファイルが見つかりません: {excel_path}")
         return pd.DataFrame()
@@ -83,7 +84,7 @@ def load_and_match_data(data_dir, excel_path, path_templates, excel_columns):
     df_clinical = pd.concat(all_sheets_dict.values(), ignore_index=True)
     print(f"Excelの全シートから合計 {len(df_clinical)} 件の臨床データを読み込みました. ")
 
-    required_columns = ['研究用匿名化ID'] + excel_columns
+    required_columns = ['subject_id'] + excel_columns
 
     if not all(col in df_clinical.columns for col in required_columns):
         missing_cols = [col for col in required_columns if col not in df_clinical.columns]
@@ -91,10 +92,10 @@ def load_and_match_data(data_dir, excel_path, path_templates, excel_columns):
         return pd.DataFrame()
     
     # 異なるシート間でsubject_idが重複している場合の警告と処理
-    if df_clinical['研究用匿名化ID'].duplicated().any():
-        num_duplicates = df_clinical['研究用匿名化ID'].duplicated().sum()
-        print(f"警告: 異なるシート間で {num_duplicates} 件の '研究用匿名化ID' の重複が見つかりました. 最初の出現データを使用します. ")
-        df_clinical = df_clinical.drop_duplicates(subset=['研究用匿名化ID'], keep='first')
+    if df_clinical['subject_id'].duplicated().any():
+        num_duplicates = df_clinical['subject_id'].duplicated().sum()
+        print(f"警告: 異なるシート間で {num_duplicates} 件の 'subject_id' の重複が見つかりました. 最初の出現データを使用します. ")
+        df_clinical = df_clinical.drop_duplicates(subset=['subject_id'], keep='first')
 
     # 必要なカラムのみ抽出し、欠損値を持つ行を削除
     df_clinical = df_clinical[required_columns].dropna()
@@ -102,7 +103,7 @@ def load_and_match_data(data_dir, excel_path, path_templates, excel_columns):
     file_data = []
     print("臨床データと画像ファイルのマッチングを開始します...")
     for _, row in df_clinical.iterrows():
-        sub_id = row['研究用匿名化ID']
+        sub_id = row['subject_id']
         paths = {key: os.path.join(data_dir, sub_id, template.format(subject=sub_id))
                  for key, template in path_templates.items()}
         
@@ -163,7 +164,7 @@ if __name__ == '__main__':
     print("--- データセット作成開始 ---")
 
     # 1. データ情報の読み込みとマッチング
-    matched_df = load_and_match_data(PROCESSED_DATA_DIR, EXCEL_PATH, PATH_TEMPLATES, EXCEL_COLUMNS)
+    matched_df = load_and_match_data(PROCESSED_DATA_DIR, CSV_PATH, PATH_TEMPLATES, EXCEL_COLUMNS)
     if matched_df.empty:
         print("処理対象データが見つかりませんでした. パスやファイル名を確認してください. ")
     else:
