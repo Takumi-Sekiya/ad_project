@@ -18,6 +18,9 @@ data/*
 output/
 mlruns/
 
+# ファイル名が含まれるconfigを無視
+mapping.yaml
+
 # ログファイルや一時ファイル
 *.log
 temp/
