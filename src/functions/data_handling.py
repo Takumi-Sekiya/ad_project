@@ -7,28 +7,21 @@ from tqdm import tqdm
 
 from .image_preprocessing import crop_roi, pad_to_canvas, normalize_intensity
 
-def load_and_match_data(data_dir, excel_path, path_templates, excel_columns):
+def load_and_match_data(data_dir, csv_path, path_templates, target_columns):
     """
     臨床データと画像ファイルを読み込み, IDを基準に紐づける
     """
     try:
-        all_sheets_dict = pd.read_excel(excel_path, sheet_name=None, dtype={'subject_id': str})
+        df_clinical = pd.read_csv(csv_path)
     except FileNotFoundError:
-        print(f"エラー: 臨床データファイルが見つかりません: {excel_path}")
+        print(f"エラー: 臨床データファイルが見つかりません: {csv_path}")
         return pd.DataFrame()
 
-    if not all_sheets_dict:
-        print(f"エラー: Excelファイル '{os.path.basename(excel_path)}' にシートが見つかりません. ")
-        return pd.DataFrame()
-
-    df_clinical = pd.concat(all_sheets_dict.values(), ignore_index=True)
-    print(f"Excelの全シートから合計 {len(df_clinical)} 件の臨床データを読み込みました. ")
-
-    required_columns = ['subject_id'] + excel_columns
+    required_columns = ['subject_id'] + target_columns
 
     if not all(col in df_clinical.columns for col in required_columns):
         missing_cols = [col for col in required_columns if col not in df_clinical.columns]
-        print(f"エラー: 結合後のデータにカラムが見つかりません: {', '.join(missing_cols)}")
+        print(f"エラー: CSVファイルにカラムが見つかりません: {', '.join(missing_cols)}")
         return pd.DataFrame()
     
     # 異なるシート間でsubject_idが重複している場合の警告と処理
@@ -72,7 +65,7 @@ def determine_target_canvas_size(df):
     canvas_shape = tuple(math.ceil(d / 16) * 16 for d in max_dims)
     return canvas_shape
 
-def create_dataset(df, mode, excel_columns, canvas_shape=None):
+def create_dataset(df, mode, target_columns, canvas_shape=None):
     images, features = [], []
     print(f"データセットを生成中 (モード: {mode})...")
     for _, row in tqdm(df.iterrows(), total=len(df)):
@@ -92,7 +85,7 @@ def create_dataset(df, mode, excel_columns, canvas_shape=None):
             raise ValueError(f"未知のROI処理モードです: {mode}")
         
         images.append(processed_img)
-        features.append(row[excel_columns])
+        features.append(row[target_columns])
 
     img_array = np.array(images)[..., np.newaxis]
     features_df = pd.DataFrame(features).reset_index(drop=True)

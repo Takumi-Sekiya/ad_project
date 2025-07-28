@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from functions.data_handling import load_and_match_data, determine_target_canvas_size, create_dataset
 
 
-
+"""
 #ベースディレクトリ
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROCESSED_DATA_DIR = BASE_DIR / 'data' / 'derivatives' / 'processed_data'
@@ -41,7 +41,7 @@ TEST_SIZE = 0.2
 
 # 出力ファイル名
 OUTPUT_PICKLE_FILE = BASE_DIR / 'data' / 'processed' / f'dataset_{MASK_NAME}.pkl'
-
+"""
 
 
 
@@ -75,7 +75,7 @@ def main():
 
     # 3. キャンバスサイズを決定
     target_canvas_size = None
-    if ROI_PROCESSING_MODE == 'crop_and_pad':
+    if dataset_cfg['roi_processing_mode'] == 'crop_and_pad':
         target_canvas_size = determine_target_canvas_size(matched_df)
         print(f"\n決定したキャンバスサイズ: {target_canvas_size}")
         
@@ -113,15 +113,15 @@ def main():
         'img_test': img_test, 'features_test': features_test,
         'config': config
     }
-    print(f"\nデータセットをpickleファイルに保存中: {OUTPUT_PICKLE_FILE}")
+    print(f"\nデータセットをpickleファイルに保存中: {output_pickle_file}")
     with open(output_pickle_file, 'wb') as f:
         pickle.dump(dataset_dict, f)
 
     print("\n--- データセット作成完了 ---")
-    print(f"使用したベース画像テンプレート: {PATH_TEMPLATES['base']}")
-    print(f"使用したマスクテンプレート: {PATH_TEMPLATES['mask']}")
-    print(f"抽出特徴量: {EXCEL_COLUMNS}")
-    print(f"ROI処理モード: {ROI_PROCESSING_MODE}")
+    print(f"使用したベース画像テンプレート: {dataset_cfg['path_templates']['base']}")
+    print(f"使用したマスクテンプレート: {dataset_cfg['path_templates']['mask']}")
+    print(f"抽出特徴量: {dataset_cfg['target_columns']}")
+    print(f"ROI処理モード: {dataset_cfg['roi_processing_mode']}")
         
     print("\n生成されたデータセットの形状と型:")
     print(f"img_train shape: {img_train.shape}, type: {type(img_train)}")
