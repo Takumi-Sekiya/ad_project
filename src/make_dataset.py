@@ -110,10 +110,11 @@ def main():
     # 6. Pickle形式で保存
     dataset_dict = {
         'img_train': img_train, 'features_train': features_train,
-        'img_test': img_test, 'features_test': features_test
+        'img_test': img_test, 'features_test': features_test,
+        'config': config
     }
     print(f"\nデータセットをpickleファイルに保存中: {OUTPUT_PICKLE_FILE}")
-    with open(OUTPUT_PICKLE_FILE, 'wb') as f:
+    with open(output_pickle_file, 'wb') as f:
         pickle.dump(dataset_dict, f)
 
     print("\n--- データセット作成完了 ---")
