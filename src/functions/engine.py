@@ -100,14 +100,17 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
     os.makedirs(output_dir, exist_ok=True)
     print(f"Artifacts will be saved to: {output_dir}")
 
-    # 5-2. 訓練データとテストデータで予測を実行
+    # 5-2. 訓練済みモデルの保存
+    model.save(os.path.join(output_dir, "model"))
+
+    # 5-3. 訓練データとテストデータで予測を実行
     y_train_true = np.concatenate([y for _, y in train_ds.batch(batch_size)])
     y_train_pred = model.predict(train_ds.batch(batch_size)).flatten()
 
     y_test_true = np.concatenate([y for _, y in test_dataset])
     y_test_pred = model.predict(test_dataset).flatten()
 
-    # 5-3. Excelファイルに予測結果を保存
+    # 5-4. Excelファイルに予測結果を保存
     excel_path = os.path.join(output_dir, "predictions.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
         train_df = pd.DataFrame({'True': y_train_true, 'Predicted': y_train_pred})
@@ -116,7 +119,7 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
         test_df = pd.DataFrame({'True': y_test_true, 'Predicted': y_test_pred})
         test_df.to_excel(writer, sheet_name='Test_Data', index=False)
     
-    # 5-4. プロット図を生成し, ローカルとMLflowに保存
+    # 5-5. プロット図を生成し, ローカルとMLflowに保存
     train_plot_path = os.path.join(output_dir, "train_scatter_plot.png")
     train_fig = save_scatter_plot(y_train_true, y_train_pred, "Train Data Scatter Plot", train_plot_path)
     mlflow.log_figure(train_fig, "train_scatter_plot.png")
@@ -125,7 +128,7 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
     test_fig = save_scatter_plot(y_test_true, y_test_pred, "Test Data Scatter Plot", test_plot_path)
     mlflow.log_figure(test_fig, "test_scatter_plot.png")
 
-    # 5-5. MLflowに最終指標を記録
+    # 5-6. MLflowに最終指標を記録
     rmse = np.sqrt(mean_squared_error(y_test_true, y_test_pred))
     r2 = r2_score(y_test_true, y_test_pred)
     mlflow.log_metric("final_test_rmse", rmse)
