@@ -41,4 +41,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     main(args.config)
 
-# python script/train.py --config 
+# python src/train.py --config 

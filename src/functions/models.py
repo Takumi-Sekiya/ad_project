@@ -56,7 +56,11 @@ def build_multimodal_3dcnn(input_shape: tuple, config: dict) -> Model:
     3DMRI画像と数値データを入力とするマルチモーダル回帰モデルを構築する.
     """
     dropout_rate = config['model']['params']['dropout_rate']
-    numerical_features_dim = config['model']['params']['numerical_features_dim']
+
+    tabular_features_list = config['data'].get('tabular_input_features', [])
+    if not tabular_features_list:
+        raise ValueError("'tabular_input_features' must be specified in the config for Multimodal3DCNN.")
+    numerical_features_dim = len(tabular_features_list)
 
     # 1. 画像特徴抽出ブランチ
     img_input = Input(shape=input_shape, name='img_input')
@@ -95,7 +99,7 @@ def build_multimodal_3dcnn(input_shape: tuple, config: dict) -> Model:
 
     y = Dense(64, activation='relu', kernel_initializer=HeNormal())(combined_features)
     y = Dropout(dropout_rate)(y)
-    y = Dense(32, activation='relu', kernel_initializer=HeNormal())(combined_features)
+    y = Dense(32, activation='relu', kernel_initializer=HeNormal())(y)
     y = Dropout(dropout_rate)(y)
 
     output = Dense(1, activation='linear', name='output')(y)
