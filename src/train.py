@@ -28,7 +28,7 @@ def main(config_path: str):
         train_ds, test_ds = get_datasets(config)
 
         # 5. モデルを構築
-        img_shape = next(iter(train_ds))[0].shape
+        img_shape = next(iter(train_ds))[0]['img_input'].shape
         model = build_model(input_shape=img_shape, config=config)
         model.summary()
 

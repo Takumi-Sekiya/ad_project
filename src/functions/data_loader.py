@@ -42,7 +42,13 @@ def get_datasets(config: dict):
 
     else:
         print("unimodal mode enabled (image only).")
-        train_ds = tf.data.Dataset.from_tensor_slices((X_train_img, y_train))
-        test_ds = tf.data.Dataset.from_tensor_slices((X_test_img, y_test))
+        train_ds = tf.data.Dataset.from_tensor_slices((
+            {'img_input': X_train_img},
+            y_train
+        ))
+        test_ds = tf.data.Dataset.from_tensor_slices((
+            {'img_input': X_test_img},
+            y_test
+        ))
 
     return train_ds, test_ds
