@@ -6,45 +6,6 @@ from sklearn.model_selection import train_test_split
 
 from functions.data_handling import load_and_match_data, determine_target_canvas_size, create_dataset
 
-
-"""
-#ベースディレクトリ
-BASE_DIR = Path(__file__).resolve().parent.parent
-PROCESSED_DATA_DIR = BASE_DIR / 'data' / 'derivatives' / 'processed_data'
-CSV_PATH = BASE_DIR / 'data' / 'processed' / 'structured_data.csv'
-
-#--- 実験に合わせて変更するパラメータ ---
-# 使用する画像のパスを定義するテンプレート
-# {subject} の部分が被験者IDに置換される
-PATH_TEMPLATES = {
-    'base': 'spm/norm/mw{subject}_T1w.nii',      # 元画像
-    #'mask': 'spm/norm/w{subject}_mask-hippocampus.nii', # マスク (例: 海馬)
-    #'mask': 'spm/norm/wc1{subject}_T1w.nii', # 灰白質をマスクとして使う場合など
-    #'mask': 'spm/norm/w{subject}_mask-prefrontal-cortex.nii',
-    #'mask': 'spm/norm/w{subject}_mask-parietal-lobe.nii',
-    #'mask': 'spm/norm/w{subject}_mask-occipital-lobe.nii',
-    #'mask': 'spm/norm/w{subject}_mask-temporal-lobe.nii',
-    'mask': 'spm/norm/w{subject}_mask-brain-stem.nii',
-}
-MASK_NAME = 'brain-stem'
-
-# ROI抽出の方法: 
-# 'crop_and_pad': 周囲の不要な0領域を削除し、全データで統一したサイズに整形
-# 'simple_mask': 単純にマスクを乗算するだけ（全脳画像サイズになる）
-ROI_PROCESSING_MODE = 'crop_and_pad' 
-
-# 予測したい指標（Excelファイルのカラム名）
-EXCEL_COLUMNS = ['MMSE', 'CDR', 'gm_atrophy', 'severity']
-
-# データ分割の割合
-TEST_SIZE = 0.2
-
-# 出力ファイル名
-OUTPUT_PICKLE_FILE = BASE_DIR / 'data' / 'processed' / f'dataset_{MASK_NAME}.pkl'
-"""
-
-
-
 def main():
     print("--- データセット作成開始 ---")
 

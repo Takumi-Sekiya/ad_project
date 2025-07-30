@@ -18,6 +18,8 @@ dataset:
   target_columns:
     - 'MMSE'
     - 'CDR'
+    - 'CDR_sum'
+    - 'Moca-J'
     - 'gm_atrophy'
     - 'severity'
   
@@ -29,3 +31,11 @@ training:
 # 出力設定
 output:
   filename_template: 'dataset_{mask_name}.pkl'
+
+#'spm/norm/w{subject}_mask-hippocampus.nii'
+#'spm/norm/wc1{subject}_T1w.nii'
+#'spm/norm/w{subject}_mask-prefrontal-cortex.nii'
+#'spm/norm/w{subject}_mask-parietal-lobe.nii'
+#'spm/norm/w{subject}_mask-occipital-lobe.nii'
+#'spm/norm/w{subject}_mask-temporal-lobe.nii'
+#'spm/norm/w{subject}_mask-brain-stem.nii'
