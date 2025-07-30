@@ -165,7 +165,7 @@ def build_3d_resnet(input_shape: tuple, config: dict) -> Model:
 MODEL_REGISTRY = {
     "Simple3DCNN": build_simple_3dcnn,
     "Multimodal3DCNN": build_multimodal_3dcnn,
-    "#DResNet": build_3d_resnet,
+    "3DResNet": build_3d_resnet,
     # 新しいモデルを追加
 }
 
