@@ -8,10 +8,10 @@ data:
 dataset:
   path_templates:
     base: 'spm/norm/mw{subject}_T1w.nii'
-    mask: 'spm/norm/wc1{subject}_T1w.nii' # マスクの設定 
+    mask: 'spm/norm/w{subject}_mask-brain-stem.nii'
 
   # マスク名（出力ファイル名に使用）
-  mask_name: 'gray-matter'
+  mask_name: 'brain-stem'
 
   roi_processing_mode: 'crop_and_pad'
 
