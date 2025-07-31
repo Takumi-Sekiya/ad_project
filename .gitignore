@@ -19,7 +19,7 @@ output/
 mlruns/
 
 # ファイル名が含まれるconfigを無視
-*.yaml
+src/config/*
 
 # ログファイルや一時ファイル
 *.log
