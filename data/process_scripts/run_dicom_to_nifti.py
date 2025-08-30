@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 RAW_DATA_DIR = PROJECT_ROOT / 'raw_data'
 NIFTI_OUT_DIR = PROJECT_ROOT / 'derivatives' / 'bids_nifti'
 
-SUBJECT_PREFIXES = ['YGT_*', 'SND_*']
+SUBJECT_PREFIXES = ['YGT_*', 'SND_*', 'AMC_*']
 
 MAX_WORKERS = max((os.cpu_count() - 4), 1)
 

@@ -22,7 +22,7 @@ script_dir = fullfile(project_dir, 'process_scripts');
 addpath(fullfile(script_dir, 'functions'));
 
 %--- 被験者リスト ---
-prefixes = {'YGT_*', 'SND_*'}; %抽出する接頭辞のパターンを指定
+prefixes = {'YGT_*', 'SND_*', 'AMC_*'}; %抽出する接頭辞のパターンを指定
 d = [];
 
 for i = 1:length(prefixes)
@@ -57,7 +57,7 @@ template_dartel  = fullfile(script_dir, 'spm_batch_templates', 'template_dartel_
 
 %% (2) 処理の選択 (実行したいステップを true にする)
 % -------------------------------------------------------------------------
-flags.run_step1_dicom_to_nifti    = true; % DICOM -> NIfTI 変換
+flags.run_step1_dicom_to_nifti    = false; % DICOM -> NIfTI 変換
 flags.run_step2_run_recon_all     = true; % FreeSurfer recon-all 実行
 flags.run_step3_prepare_nifti     = true; % FreeSurfer出力 -> NIfTI/マスク作成
 flags.run_step4_segment           = true; % SPM Segment
