@@ -7,6 +7,15 @@ function func_04_segment(processed_data_dir, subject_ids, template_path)
         spm_jobman('initcfg');
         
         sub_id = subject_ids{i};
+
+        output_dir = fullfile(processed_data_dir, sub_id, 'spm', 'seg');
+        final_output_check_file = fullfile(output_dir, ['c1', sub_id, '_T1w.nii']);
+
+        if exist(final_output_check_file, 'file')
+            fprintf('Subject %s has already been segmented. Skipping.\n', sub_id);
+            continue;
+        end
+
         fprintf('Segmenting subject: %s\n', sub_id);
         
         t1w_nii = fullfile(processed_data_dir, sub_id, 'anat', [sub_id, '_T1w.nii']);
@@ -19,7 +28,7 @@ function func_04_segment(processed_data_dir, subject_ids, template_path)
         
         % --- 出力ディレクトリの指定と作成 ---
         % SPMは出力先を指定できないため、実行後にファイルを移動する
-        output_dir = fullfile(processed_data_dir, sub_id, 'spm', 'seg');
+        
         if ~exist(output_dir, 'dir'), mkdir(output_dir); end
         
         % --- 実行 ---

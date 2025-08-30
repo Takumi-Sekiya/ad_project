@@ -1,5 +1,5 @@
 function func_02_run_recon_all(nifti_dir, fs_subjects_dir, subject_ids)
-    fs_home = '/usr/local/freesurfer';
+    fs_home = '/usr/local/freesurfer/7.4.0';
     setup_cmd = sprintf('export FREESURFER_HOME=%s && source $FREESURFER_HOME/SetUpFreeSurfer.sh', fs_home);
 
     parfor i = 1:length(subject_ids)
