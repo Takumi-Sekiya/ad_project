@@ -10,104 +10,129 @@ PROCESSED_DATA_DIR = BASE_DIR / "data" / "processed"
 MAPPING_FILE = BASE_DIR / "src" / "config" / "mapping.yaml"
 OUTPUT_FILE = PROCESSED_DATA_DIR / "structured_data.csv"
 
-def main():
+def load_config(mapping_file_path):
     """
-    複数の生エクセルデータからマッピングファイルに基づき, 単一の構造化csvファイルを生成する.
+    設定ファイルを読み込み, 内容を検証する
     """
-    print("処理を開始 ...")
-
-    # 1. マッピングファイルの読み込み
     try:
-        with open(MAPPING_FILE, 'r', encoding='utf-8') as f:
+        with open(mapping_file_path, 'r', encodinf='utf-8') as f:
             config = yaml.safe_load(f)
-        source_data_list = config.get("source_data", {})
-        final_columns_info = config.get("final_columns", {})
-        if not source_data_list or not final_columns_info:
-            print(f"エラー: {MAPPING_FILE} の形式が正しくありません. 'source_data' と 'final_columns' のキーが必要です.")
+        sources = config.get("sources", [])
+        final_columns_info = config.get("final_columns", [])
+        if not sources or not final_columns_info:
+            print(f"エラー: {mapping_file_path}の'sources'または'final_columns'が不適切です.")  
             sys.exit(1)
+        return sources, final_columns_info
 
     except FileNotFoundError:
-        print(f"エラー: マッピングファイル {MAPPING_FILE} が見つかりません。")
-        sys.exit(1)
+        print(f"エラー: マッピングファイル{mapping_file_path}が見つかりません.")
+        sys.exit(1)         
 
-    # 整形後のDataFrameを格納するリスト
-    processed_dfs = []
+def process_source_file(source_info, raw_data_dir):
+    """
+    単一のデータソースファイルを読み込み, 設定に基づいて整形する.
+    """
+    filename = source_info.get("file")
+    file_path = raw_data_dir / filename
 
-    # 2. ファイルごとに整形処理
-    print("ファイルの読み込み, 整形 ...")
-    for source_info in source_data_list:
-        filename = source_info.get("filename")
-        sheet_name = source_info.get("sheet_name", 0)
-        column_map = source_info.get("columns")
-
-        if not filename or not column_map:
-            print(f"警告: 'filename' または 'columns' の設定が不完全な項目があります。スキップします。")
-            continue
-
-        file_path = RAW_DATA_DIR / filename
-        if not file_path.exists():
-            print(f"警告: {file_path} が見つかりません. スキップします.")
-            continue
-
-        print(f"処理中: {filename} (シート: {sheet_name if sheet_name != 0 else '最初のシート'})")
-        try:
-            df = pd.read_excel(file_path, sheet_name=sheet_name)
-        except Exception as e:
-            print(f"  エラー: {filename} のシート '{sheet_name}' の読み込みに失敗しました。詳細: {e}")
-            continue
-
-        # マッピングを反転
-        rename_dict = {v: k for k, v in column_map.items()}
-
-        # 属性名の変更. 存在しない属性は無視.
-        original_cols_to_use = list(rename_dict.keys())
-        df_renamed = df[original_cols_to_use].rename(columns=rename_dict)
-
-        # 存在しない列をNaNで追加
-        final_cols_list = list(final_columns_info.keys())
-        df_final = df_renamed.reindex(columns=final_cols_list)
-
-        processed_dfs.append(df_final)
-
-    if not processed_dfs:
-        print("エラー: 処理できるデータがありませんでした. 処理を中断します.")
-        sys.exit(1)
-
-    # 3. 全データの統合
-    print("データの統合 ...")
-    combined_df = pd.concat(processed_dfs, ignore_index=True)
-
-    # 4. データ型の統一とクレンジング
-    print("データ型の統一 ...")
-    for col_name, col_info in final_columns_info.items():
-        if col_info.get("type") == "numeric" and col_name in combined_df.columns:
-            combined_df[col_name] = pd.to_numeric(combined_df[col_name], errors='coerce')
+    if not file_path.exists():
+        print(f" - 警告: {file_path}が見つかりません. スキップします.")
+        return None
     
-    # 5. IDの重複のチェック
-    print("IDの重複のチェック ...")
-    if 'subject_id' in combined_df.columns:
-        id_series = combined_df['subject_id'].dropna()
-        duplicated_ids = id_series[id_series.duplicated()].unique()
+    # ファイル読み込み
+    try:
+        sheet = source_info.get("sheet", 0)
+        skip_after_header = source_info.get("skip_after_header", 0)
+        rows_to_skip = list(range(1, skip_after_header + 1)) if skip_after_header > 0 else None
 
-        if len(duplicated_ids) > 0:
-            print("subject_idに重複を発見.")
-            print(list(duplicated_ids))
-            print("処理を中断. データとマッピングファイルを確認してください.")
-            #sys.exit(1)
+        if file_path.suffix in ['.xlsx', '.xls']:
+            df = pd.read_excel(file_path, sheet_name=sheet, header=0, skiprows=rows_to_skip, engine='openpyxl')
+        elif file_path.suffix == '.csv':
+            df = pd.read_csv(file_path, header=0, skiprows=rows_to_skip)
         else:
-            print("  IDの重複なし.")
+            print(f" - 警告: 未対応のファイル形式です: {file_path.name}")
+            return None
         
-    else:
-        print("警告: 'parent_id'カラムが見つからないため, 重複チェックをスキップ.")
-    
-    # 6. 出力
-    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    combined_df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
+        # カラム整形
+        rename_dict = {v: k for k, v in source_info.get("columns", {}).items()}
+        if 'subject_id' not in rename_dict.values():
+            print(f" - 警告: {filename}のマッピングに 'subject_id' がありません. スキップします.")
+            return None
+        
+        df.rename(columns=rename_dict, inplace=True)
 
-    print("\n--- 処理完了 ---")
-    print(f"構造化データを{OUTPUT_FILE}に保存.")
-    print("\n最終データフレームの情報:")
-    combined_df.info()
+        cols_to_skip = [col for col in rename_dict.values() if col in df.columns]
+        if not cols_to_skip:
+            return None
+        df = df[cols_to_skip]
+
+        # データクレンジング
+        df.dropna(subset=['subject_id'], inplace=True)
+        if df.empty():
+            return None
+
+        df['subject_id'] = df['subject_id'].astype(str)
+        df.set_index('subject_id', inplace=True)
+        
+        return df
+
+def finalize_and_save_data(df, final_columns_info, output_path):
+    """
+    最終的なDataFrameを整形し, CSVとして保存する.
+    """
+    if df.empty():
+        print(f"エラー: 処理結果が空です. 処理を中止します.")
+        sys.exit(1)
+
+    df.reset_index(inplace=True)
+
+    # データ型の統一
+    for col_name, col_info in final_columns_info.items():
+        if col_name in df.columns and col_info.get("type") == 'numeric':
+            df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
+
+    # カラムの順序を final_columns に揃える
+    final_order = [col for col in final_columns_info.keys() if col in df.columns]
+    other_cols = [col for col in df.columns if col not in final_order]
+    df = df[final_order + other_cols]
+
+    # 出力
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False, encoding='utf-8-sig')
+
+    print(f"統合後データが {output_path} に保存されました.")
+    print(f"合計 {len(df)} 件のユニークIDが処理されました.")
+
+def main():
+    """
+    複数のデータソースをIDベースでマージし, 単一のマスターデータを生成する.
+    """
+    # 1. 設定の読み込み
+    source, final_columns_info = load_config(MAPPING_FILE)
+
+    # 2. マスターDataFrameの初期化
+    master_df = pd.DataFrame()
+
+    # 3. 各データソースを処理し, マスターへマージ
+    for i, source in enumerate(sources):
+        filename = source.get("file", "N/A")
+        print(f" - 処理中 ({i+1}/{len(sources)}): {filename}")
+
+        temp_df = process_source_file(source, RAW_DATA_DIR)
+        
+        if temp_df is None:
+            print(f" - 警告: {filename} から有効な情報は得られませんでした.")
+            continue
+        
+        if master_df.empty():
+            master_df = temp_df
+        else:
+            master_df.update(temp_df)
+            new_ids = temp_df.index.difference(master_df.index)
+            if not new_ids.empty():
+                master_df = pd.concat([master_df, temp_df.loc[new_ids]])
+
+    finalize_and_save_data(master_df, final_columns_info, OUTPUT_FILE)
 
 if __name__ == '__main__':
     main()
