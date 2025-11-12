@@ -33,3 +33,39 @@ def step1_dicom_to_nifti(sub_id):
     if not run_command(cmd):
         print(f"Failed to convert DICOM to NIfTI for {sub_id}")
 
+def step_02_run_recon_all(sub_id):
+    """
+    FreeSurferのrecon-allを実行.
+    """
+    print(f"--- Step 2: FreeSurfer recon-all for: {sub_id} ---")
+
+    input_nifti = cfg.BIDS_NIFTI_DIR / sub_id / f"{sub_id}_T1w.nii"
+    output_fs_dir = cfg.FREESURFER_DIR / sub_id
+    done_file = output_fs_dir / "scripts" / "recon-all.done"
+
+    if done_file.exists():
+        print(f"recon-all already completed for {sub_id}, skipping.")
+        return
+    
+    if not input_nifti.exists():
+        print(f"Input NIfTI does not exist for {sub_id}: {input_nifti}")
+        return
+
+    log_dir = cfg.FS_SUBJECTS_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{sub_id}recon-all.log"
+
+    setup_cmd = f"export FREESURFER_HOME={cfg.FREESURFER_HOME} && source $FREESURFER_HOME/SetUpFreeSurfer.sh"
+    recon_cmd = f"recon-all -s {sub_id} -i {input_nifti} -all"
+
+    full_cmd = (
+        f"bash -c \""
+        f"{setup_cmd} && "
+        f"export SUBJECTS_DIR={cfg.FS_SUBJECTS_DIR} && "
+        f"{recon_cmd} "
+        f"\""
+    )
+
+    if not run_command(full_cmd, log_file=log_file):
+        print(f"Failed to run recon-all for {sub_id}. Check log: {log_file}")
+
