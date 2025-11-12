@@ -69,3 +69,42 @@ def step_02_run_recon_all(sub_id):
     if not run_command(full_cmd, log_file=log_file):
         print(f"Failed to run recon-all for {sub_id}. Check log: {log_file}")
 
+def step_03_prepare_nifti(sub_id):
+    """
+    FreeSurfer出力からNIfTIデータを準備.
+    """
+    print(f"--- Step 3: Prepare NIfTI for: {sub_id} ---")
+
+    fs_sub_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
+
+    anat_dir = cfg.PROCESSED_DATA_DIR / sub_id / "anat"
+    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "masks"
+    anat_dir.mkdir(parents=True, exist_ok=True)
+    mask_dir.mkdir(parents=True, exist_ok=True)
+
+    t1w_mgz = fs_sub_dir / "orig.mgz"
+    t1w_nii = anat_dir / f"{sub_id}_T1w.nii"
+
+    if t1w_mgz.exists() and not t1w_nii.exists():
+        print(f"Converting orig.mgz to {t1w_nii}")
+        cmd_t1w = f"mri_convert {t1w_mgz} {t1w_nii}"
+        run_command(cmd_t1w)
+    elif t1w_nii.exists():
+        print(f"T1w NIfTI already exists for {sub_id}, skipping conversion.")
+    
+    aseg_mgz = fs_sub_dir / "aparc+aseg.mgz"
+
+    if aseg_mgz.exists():
+        for roi in cfg.ROI_SETS:
+            roi_name = roi['name']
+            mask_nii = mask_dir / f"{sub_id}_mask_{roi_name}.nii"
+
+            if not mask_nii.exists():
+                print(f"Creating mask for ROI: {roi_name}")
+                match_str = " ".join(map(str, roi["labels"]))
+                cmd_mask = f"mri_binarize --i {aseg_mgz} --match {match_str} --o {mask_nii}"
+                run_command(cmd_mask)
+            else:
+                print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
+    else:
+        print(f"aparc+aseg.mgz does not exist for {sub_id}, cannot create ROI masks.")
