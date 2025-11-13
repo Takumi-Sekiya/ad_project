@@ -4,13 +4,13 @@ MRI画像前処理パイプラインのメインスクリプト.
 
 (1) config.py でパラメータを設定
 (2) condif.py で実行するステップのフラグをTrueにする
-(3) このスクリプトを実行
+(3) このスクリプトを実行 python data/process_scripts/main_pipeline.py
 """
 
 import config.config as cfg
 import functions.pipeline_steps as steps
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
 def find_subjects(raw_data_dir, prefixes):
@@ -32,7 +32,7 @@ def run_step_parallel(step_function, subject_ids, n_cores):
     """
     指定されたステップ関数を, 被験者リストに対して並列実行する.
     """
-    with ProcessPoolExecutor(max_workers=n_cores) as executor:
+    with ThreadPoolExecutor(max_workers=n_cores) as executor:
         futures = {
             executor.submit(step_function, sub_id): sub_id
             for sub_id in subject_ids
