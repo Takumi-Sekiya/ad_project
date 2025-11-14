@@ -68,7 +68,6 @@ def main():
     # --- Step 2: Run FreeSurfer recon-all ---
     if cfg.STEP_FLAGS['run_step2_run_recon_all']:
         print("\n===== Step 2: FreeSurfer recon-all 実行 =====")
-        print(f"[注意] recon-all は被験者1名あたり数時間かかります。")
         run_step_parallel(steps.step_02_run_recon_all, subject_ids, cfg.N_CORES)
 
     # --- Step 3: NIfTIファイルの準備 (FS出力から) ---

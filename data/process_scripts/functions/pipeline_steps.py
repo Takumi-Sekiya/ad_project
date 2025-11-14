@@ -8,7 +8,7 @@ import config.config as cfg
 from functions.utils import run_command
 from pathlib import Path
 
-def step1_dicom_to_nifti(sub_id):
+def step_01_dicom_to_nifti(sub_id):
     """
     DICOMデータをNIfTI形式に変換.
     """
@@ -40,7 +40,7 @@ def step_02_run_recon_all(sub_id):
     print(f"--- Step 2: FreeSurfer recon-all for: {sub_id} ---")
 
     input_nifti = cfg.BIDS_NIFTI_DIR / sub_id / f"{sub_id}_T1w.nii"
-    output_fs_dir = cfg.FREESURFER_DIR / sub_id
+    output_fs_dir = cfg.FS_SUBJECTS_DIR / sub_id
     done_file = output_fs_dir / "scripts" / "recon-all.done"
 
     if done_file.exists():
@@ -78,7 +78,7 @@ def step_03_prepare_nifti(sub_id):
     fs_sub_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
 
     anat_dir = cfg.PROCESSED_DATA_DIR / sub_id / "anat"
-    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "masks"
+    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "mask"
     anat_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
 
