@@ -95,7 +95,7 @@ def step_03_prepare_nifti(sub_id):
     aseg_mgz = fs_sub_dir / "aparc+aseg.mgz"
 
     if aseg_mgz.exists():
-        for roi in cfg.ROI_SETS:
+        for roi in cfg.LOBES:
             roi_name = roi['name']
             mask_nii = mask_dir / f"{sub_id}_mask_{roi_name}.nii"
 
