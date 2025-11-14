@@ -108,3 +108,38 @@ def step_03_prepare_nifti(sub_id):
                 print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
     else:
         print(f"aparc+aseg.mgz does not exist for {sub_id}, cannot create ROI masks.")
+
+def step_04_segment_hippocampus(sub_id):
+    """
+    FreeSurferの海馬小領域セグメンテーション (segmentHA_T1.sh) を実行.
+    Step 2 (recon-all) が完了していることが前提.
+    """
+    print(f"--- Step 4: Hippocampal Subfield Segmentation for: {sub_id} ---")
+
+    recon_all_done_file = cfg.FS_SUBJECTS_DIR / sub_id / "scripts" / "recon-all.done"
+    if not recon_all_done_file.exists():
+        print(f"recon-all not completed for {sub_id}, cannot run hippocampal segmentation.")
+        return
+    
+    output_check_file = cfg.FS_SUBJECTS_DIR / sub_id / "mri" / "lh.hippoSfLabels-T1.v10.mgz"
+    if output_check_file.exists():
+        print(f"Hippocampal segmentation already completed for {sub_id}, skipping.")
+        return
+
+    log_dir = cfg.FS_SUBJECTS_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{sub_id}.segmentHA_T1.log"
+
+    setup_cmd = f"export FREESURFER_HOME={cfg.FREESURFER_HOME} && source $FREESURFER_HOME/SetUpFreeSurfer.sh"
+    hippo_cmd = f"segmentHA_T1.sh {sub_id}"
+
+    full_cmd = (
+        f"bash -c \""
+        f"{setup_cmd} && "
+        f"export SUBJECTS_DIR={cfg.FS_SUBJECTS_DIR} && "
+        f"{hippo_cmd} "
+        f"\""
+    )
+
+    if not run_command(full_cmd, log_file=log_file):
+        print(f"Failed to run hippocampal segmentation for {sub_id}. Check log: {log_file}")
