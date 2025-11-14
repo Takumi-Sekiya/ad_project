@@ -80,6 +80,11 @@ def main():
         print("\n===== Step 4: Hippocampal Subfield Segmentation =====")
         run_step_parallel(steps.step_04_segment_hippocampus, subject_ids, cfg.N_CORES)
 
+    # --- Step 5: Extract Hippocampal Subfield Masks ---
+    if cfg.STEP_FLAGS['run_step5_extract_subfield_masks']:
+        print("\n===== Step 5: Extract Hippocampal Subfield Masks =====")
+        run_step_parallel(steps.step_05_extract_subfield_masks, subject_ids, cfg.N_CORES)
+
     end_time = time.time()
     print(f"\nPipeline completed in {end_time - start_time:.2f} seconds.")
 

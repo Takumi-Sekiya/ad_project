@@ -143,3 +143,51 @@ def step_04_segment_hippocampus(sub_id):
 
     if not run_command(full_cmd, log_file=log_file):
         print(f"Failed to run hippocampal segmentation for {sub_id}. Check log: {log_file}")
+
+def step_05_extract_subfield_masks(sub_id):
+    """
+    Step 4 で生成した海馬小領域ラベルから, 左右を統合したバイナリ NIfTI マスクを抽出.
+    """
+    print(f"--- Step 5: Extract Hippocampal Subfield Masks for: {sub_id} ---")
+
+    fs_mri_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
+    lh_sf_mgz = fs_mri_dir / "lh.hippoSfLabels-T1.v10.mgz" # 実際に出力されたファイル名に合わせる
+    rh_sf_mgz = fs_mri_dir / "rh.hippoSfLabels-T1.v10.mgz" # 実際に出力されたファイル名に合わせる
+
+    if not (lh_sf_mgz.exists() and rh_sf_mgz.exists()):
+        print(f"Hippocampal subfield label files do not exist for {sub_id}, cannot extract masks.")
+        return
+    
+    mask_hipp_dir = cfg.PROCESSED_DATA_DIR / sub_id / "mask" / "hippocampal_subfields"
+    mask_hipp_dir.mkdir(parents=True, exist_ok=True)
+
+    setup_cmd = (
+        f"export FREESURFER_HOME={cfg.FREESURFER_HOME} && "
+        f"source $FREESURFER_HOME/SetUpFreeSurfer.sh && "
+        f"export SUBJECTS_DIR={cfg.FS_SUBJECTS_DIR}"
+    )
+
+    merged_sf_mgz = fs_mri_dir / "hippoSfLabels-T1.v10.mgz"
+
+    if not merged_sf_mgz.exists():
+        print(f"Merging left and right hippocampal subfield labels for {sub_id}.")
+        cmd_add = f"bash -c \"{setup_cmd} && mri_add {lh_sf_mgz} {rh_sf_mgz} {merged_sf_mgz}\""
+        if not run_command(cmd_add):
+            print(f"Failed to merge hippocampal subfield labels for {sub_id}.")
+            return
+    else:
+        print(f"Merged hippocampal subfield label file already exists for {sub_id}, skipping merge.")
+    
+    for roi in cfg.HIPPOCAMPAL_SUBFIELDS:
+        roi_name = roi['name']
+
+        mask_nii = mask_hipp_dir / f"{sub_id}_mask_{roi_name}.nii"
+
+        if not mask_nii.exists():
+            print(f"Creating hippocampal subfield mask for: {roi_name}")
+            match_str = " ".join(map(str, roi["labels"]))
+            cmd_mask = f"bash -c \"{setup_cmd} && mri_binarize --i {merged_sf_mgz} --match {match_str} --o {mask_nii}\""
+            if not run_command(cmd_mask):
+                print(f"Failed to create mask for {roi_name} for {sub_id}.")
+        else:
+            print(f"Mask for hippocampal subfield {roi_name} already exists for {sub_id}, skipping.")
