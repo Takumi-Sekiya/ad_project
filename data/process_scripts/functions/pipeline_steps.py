@@ -138,6 +138,35 @@ def step_03b_prepare_nifti_roi_masks(sub_id):
     else:
         print(f"aparc+aseg.mgz does not exist for {sub_id}, cannot create ROI masks.")
 
+def step_03c_prepare_nifti_lobe_masks(sub_id):
+    """
+    FreeSurfer出力からNIfTIデータを準備.
+    特定の脳葉に対してマスクを作成.
+    """
+    print(f"--- Step 3: Prepare NIfTI for: {sub_id} ---")
+
+    fs_sub_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
+
+    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "mask" / "lobes"
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    
+    aseg_mgz = fs_sub_dir / "aparc+aseg.mgz"
+
+    if aseg_mgz.exists():
+        for roi in cfg.LOBES:
+            roi_name = roi['name']
+            mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}.nii"
+
+            if not mask_nii.exists():
+                print(f"Creating mask for ROI: {roi_name}")
+                match_str = " ".join(map(str, roi["labels"]))
+                cmd_mask = f"mri_binarize --i {aseg_mgz} --match {match_str} --o {mask_nii}"
+                run_command(cmd_mask)
+            else:
+                print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
+    else:
+        print(f"aparc+aseg.mgz does not exist for {sub_id}, cannot create ROI masks.")
+
 def step_04_segment_hippocampus(sub_id):
     """
     FreeSurferの海馬小領域セグメンテーション (segmentHA_T1.sh) を実行.
