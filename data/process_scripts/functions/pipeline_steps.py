@@ -97,7 +97,36 @@ def step_03_prepare_nifti(sub_id):
     if aseg_mgz.exists():
         for roi in cfg.LOBES:
             roi_name = roi['name']
-            mask_nii = mask_dir / f"{sub_id}_mask_{roi_name}.nii"
+            mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}.nii"
+
+            if not mask_nii.exists():
+                print(f"Creating mask for ROI: {roi_name}")
+                match_str = " ".join(map(str, roi["labels"]))
+                cmd_mask = f"mri_binarize --i {aseg_mgz} --match {match_str} --o {mask_nii}"
+                run_command(cmd_mask)
+            else:
+                print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
+    else:
+        print(f"aparc+aseg.mgz does not exist for {sub_id}, cannot create ROI masks.")
+
+def step_03b_prepare_nifti_roi_masks(sub_id):
+    """
+    FreeSurfer出力からNIfTIデータを準備.
+    特定のROIに対してマスクを作成.
+    """
+    print(f"--- Step 3: Prepare NIfTI for: {sub_id} ---")
+
+    fs_sub_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
+
+    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "mask" / "rois"
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    
+    aseg_mgz = fs_sub_dir / "aparc+aseg.mgz"
+
+    if aseg_mgz.exists():
+        for roi in cfg.ROIS:
+            roi_name = roi['name']
+            mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}.nii"
 
             if not mask_nii.exists():
                 print(f"Creating mask for ROI: {roi_name}")
@@ -121,7 +150,7 @@ def step_04_segment_hippocampus(sub_id):
         print(f"recon-all not completed for {sub_id}, cannot run hippocampal segmentation.")
         return
     
-    output_check_file = cfg.FS_SUBJECTS_DIR / sub_id / "mri" / "lh.hippoSfLabels-T1.v10.mgz"
+    output_check_file = cfg.FS_SUBJECTS_DIR / sub_id / "mri" / "lh.hippoAmygLabels-T1.v22.FSvoxelSpace.mgz"
     if output_check_file.exists():
         print(f"Hippocampal segmentation already completed for {sub_id}, skipping.")
         return
@@ -151,8 +180,8 @@ def step_05_extract_subfield_masks(sub_id):
     print(f"--- Step 5: Extract Hippocampal Subfield Masks for: {sub_id} ---")
 
     fs_mri_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
-    lh_sf_mgz = fs_mri_dir / "lh.hippoSfLabels-T1.v10.mgz" # 実際に出力されたファイル名に合わせる
-    rh_sf_mgz = fs_mri_dir / "rh.hippoSfLabels-T1.v10.mgz" # 実際に出力されたファイル名に合わせる
+    lh_sf_mgz = fs_mri_dir / "lh.hippoAmygLabels-T1.v22.FSvoxelSpace.mgz" # 実際に出力されたファイル名に合わせる
+    rh_sf_mgz = fs_mri_dir / "rh.hippoAmygLabels-T1.v22.FSvoxelSpace.mgz" # 実際に出力されたファイル名に合わせる
 
     if not (lh_sf_mgz.exists() and rh_sf_mgz.exists()):
         print(f"Hippocampal subfield label files do not exist for {sub_id}, cannot extract masks.")
@@ -167,7 +196,7 @@ def step_05_extract_subfield_masks(sub_id):
         f"export SUBJECTS_DIR={cfg.FS_SUBJECTS_DIR}"
     )
 
-    merged_sf_mgz = fs_mri_dir / "hippoSfLabels-T1.v10.mgz"
+    merged_sf_mgz = fs_mri_dir / "hippoAmygLabels-T1.v22.FSvoxelSpace.mgz"
 
     if not merged_sf_mgz.exists():
         print(f"Merging left and right hippocampal subfield labels for {sub_id}.")

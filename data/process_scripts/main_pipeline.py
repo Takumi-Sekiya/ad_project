@@ -74,6 +74,11 @@ def main():
     if cfg.STEP_FLAGS['run_step3_prepare_nifti']:
         print("\n===== Step 3: NIfTIファイル準備 (FS出力から) =====")
         run_step_parallel(steps.step_03_prepare_nifti, subject_ids, cfg.N_CORES)
+
+    # --- Step 3b: 選択したROIのマスクを抽出 ---
+    if cfg.STEP_FLAGS['run_step3b_prepare_nifti_roi_masks']:
+        print("\n===== Step 3: 選択したROIのマスクを抽出 =====")
+        run_step_parallel(steps.step_03b_prepare_nifti_roi_masks, subject_ids, cfg.N_CORES)
     
     # --- Step 4: Hippocampal Subfield Segmentation ---
     if cfg.STEP_FLAGS['run_step4_segment_hippocampus']:
