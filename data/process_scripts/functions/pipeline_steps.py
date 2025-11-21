@@ -78,7 +78,7 @@ def step_03_prepare_nifti(sub_id):
     fs_sub_dir = cfg.FS_SUBJECTS_DIR / sub_id / "mri"
 
     anat_dir = cfg.PROCESSED_DATA_DIR / sub_id / "anat"
-    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "mask"
+    mask_dir = cfg.PROCESSED_DATA_DIR / sub_id / "mask" / "lobes"
     anat_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
 
@@ -98,11 +98,16 @@ def step_03_prepare_nifti(sub_id):
         for roi in cfg.LOBES:
             roi_name = roi['name']
             mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}.nii"
+            temp_mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}_TEMP.nii"
 
             if not mask_nii.exists():
                 print(f"Creating mask for ROI: {roi_name}")
                 match_str = " ".join(map(str, roi["labels"]))
-                cmd_mask = f"mri_binarize --i {aseg_mgz} --match {match_str} --o {mask_nii}"
+                cmd_mask = (
+                    f"mri_binarize --i {aseg_mgz} --match {match_str} --o {temp_mask_nii} &&"
+                    f"mri_convert -odt uchar {temp_mask_nii} {mask_nii} && "
+                    f"rm {temp_mask_nii}\""
+                )
                 run_command(cmd_mask)
             else:
                 print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
@@ -127,11 +132,16 @@ def step_03b_prepare_nifti_roi_masks(sub_id):
         for roi in cfg.ROIS:
             roi_name = roi['name']
             mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}.nii"
+            temp_mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}_TEMP.nii"
 
             if not mask_nii.exists():
                 print(f"Creating mask for ROI: {roi_name}")
                 match_str = " ".join(map(str, roi["labels"]))
-                cmd_mask = f"mri_binarize --i {aseg_mgz} --match {match_str} --o {mask_nii}"
+                cmd_mask = (
+                    f"mri_binarize --i {aseg_mgz} --match {match_str} --o {temp_mask_nii} &&"
+                    f"mri_convert -odt uchar {temp_mask_nii} {mask_nii} && "
+                    f"rm {temp_mask_nii}\""
+                )
                 run_command(cmd_mask)
             else:
                 print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
@@ -156,11 +166,16 @@ def step_03c_prepare_nifti_lobe_masks(sub_id):
         for roi in cfg.LOBES:
             roi_name = roi['name']
             mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}.nii"
+            temp_mask_nii = mask_dir / f"{sub_id}_mask-{roi_name}_TEMP.nii"
 
             if not mask_nii.exists():
                 print(f"Creating mask for ROI: {roi_name}")
                 match_str = " ".join(map(str, roi["labels"]))
-                cmd_mask = f"mri_binarize --i {aseg_mgz} --match {match_str} --o {mask_nii}"
+                cmd_mask = (
+                    f"mri_binarize --i {aseg_mgz} --match {match_str} --o {temp_mask_nii} &&"
+                    f"mri_convert -odt uchar {temp_mask_nii} {mask_nii} && "
+                    f"rm {temp_mask_nii}\""
+                )
                 run_command(cmd_mask)
             else:
                 print(f"Mask for ROI {roi_name} already exists for {sub_id}, skipping.")
@@ -224,28 +239,40 @@ def step_05_extract_subfield_masks(sub_id):
         f"source $FREESURFER_HOME/SetUpFreeSurfer.sh && "
         f"export SUBJECTS_DIR={cfg.FS_SUBJECTS_DIR}"
     )
-
-    merged_sf_mgz = fs_mri_dir / "hippoAmygLabels-T1.v22.FSvoxelSpace.mgz"
-
-    if not merged_sf_mgz.exists():
-        print(f"Merging left and right hippocampal subfield labels for {sub_id}.")
-        cmd_add = f"bash -c \"{setup_cmd} && mri_add {lh_sf_mgz} {rh_sf_mgz} {merged_sf_mgz}\""
-        if not run_command(cmd_add):
-            print(f"Failed to merge hippocampal subfield labels for {sub_id}.")
-            return
-    else:
-        print(f"Merged hippocampal subfield label file already exists for {sub_id}, skipping merge.")
     
     for roi in cfg.HIPPOCAMPAL_SUBFIELDS:
         roi_name = roi['name']
+        mask_nii = mask_hipp_dir / f"{sub_id}_mask-{roi_name}.nii"
+        temp_lh_nii = mask_hipp_dir / f"{sub_id}_mask-{roi_name}_TEMP_LH.nii"
+        temp_merged_nii = mask_hipp_dir / f"{sub_id}_mask-{roi_name}_TEMP_MERGED.nii"
 
-        mask_nii = mask_hipp_dir / f"{sub_id}_mask_{roi_name}.nii"
+        for f in [temp_lh_nii, temp_merged_nii]:
+            if f.exists(): f.unlink()
 
-        if not mask_nii.exists():
-            print(f"Creating hippocampal subfield mask for: {roi_name}")
-            match_str = " ".join(map(str, roi["labels"]))
-            cmd_mask = f"bash -c \"{setup_cmd} && mri_binarize --i {merged_sf_mgz} --match {match_str} --o {mask_nii}\""
-            if not run_command(cmd_mask):
-                print(f"Failed to create mask for {roi_name} for {sub_id}.")
-        else:
-            print(f"Mask for hippocampal subfield {roi_name} already exists for {sub_id}, skipping.")
+        match_str = " ".join(map(str, roi['labels']))
+
+
+
+        # 1. LHマスク作成 (Temp LH)
+        cmd_lh = (
+            f"bash -c \"{setup_cmd} && "
+            f"mri_binarize --i {lh_sf_mgz} --match {match_str} --o {temp_lh_nii}\""
+        )
+        if not run_command(cmd_lh):
+            print(f"failed to create LH mask for ROI: {roi_name}")
+            continue
+
+        # 2. RHマスクとマージ (Temp Merged) -> 3. 軽量化して最終出力 -> 4. 一時ファイル削除
+        cmd_merge_convert = (
+            f"bash -c \"{setup_cmd} && "
+            f"mri_binarize --i {rh_sf_mgz} --match {match_str} --merge {temp_lh_nii} --o {temp_merged_nii} && "
+            f"mri_convert -odt uchar {temp_merged_nii} {mask_nii} && "
+            f"rm {temp_lh_nii} {temp_merged_nii}\""
+        )
+
+        if not run_command(cmd_merge_convert):
+            print(f"failed to create merged mask for ROI: {roi_name}")
+            # 失敗時はゴミ掃除
+            if temp_lh_nii.exists(): temp_lh_nii.unlink()
+            if temp_merged_nii.exists(): temp_merged_nii.unlink()
+            continue
