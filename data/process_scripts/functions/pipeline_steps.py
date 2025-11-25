@@ -104,6 +104,7 @@ def step_03_prepare_nifti(sub_id):
                 print(f"Creating mask for ROI: {roi_name}")
                 match_str = " ".join(map(str, roi["labels"]))
                 cmd_mask = (
+                    f"bash -c \""
                     f"mri_binarize --i {aseg_mgz} --match {match_str} --o {temp_mask_nii} && "
                     f"mri_convert -odt uchar {temp_mask_nii} {mask_nii} && "
                     f"rm {temp_mask_nii}\""
@@ -138,6 +139,7 @@ def step_03b_prepare_nifti_roi_masks(sub_id):
                 print(f"Creating mask for ROI: {roi_name}")
                 match_str = " ".join(map(str, roi["labels"]))
                 cmd_mask = (
+                    f"bash -c \""
                     f"mri_binarize --i {aseg_mgz} --match {match_str} --o {temp_mask_nii} && "
                     f"mri_convert -odt uchar {temp_mask_nii} {mask_nii} && "
                     f"rm {temp_mask_nii}\""
@@ -172,6 +174,7 @@ def step_03c_prepare_nifti_lobe_masks(sub_id):
                 print(f"Creating mask for ROI: {roi_name}")
                 match_str = " ".join(map(str, roi["labels"]))
                 cmd_mask = (
+                    f"bash -c \""
                     f"mri_binarize --i {aseg_mgz} --match {match_str} --o {temp_mask_nii} && "
                     f"mri_convert -odt uchar {temp_mask_nii} {mask_nii} && "
                     f"rm {temp_mask_nii}\""
