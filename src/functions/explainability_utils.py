@@ -1,147 +1,113 @@
 # explainability_utils.py
+import pickle
 import numpy as np
 import tensorflow as tf
 import nibabel as nib
+from pathlib import Path
 from tf_keras_vis.gradcam import Gradcam
 from tf_keras_vis.utils.model_modifiers import ReplaceToLinear
 from tf_keras_vis.utils.scores import Score
-from nilearn import datasets, image
-from nilearn.input_data import NiftiLabelsMasker
-import math
 
 # ==========================================
-# 前処理・逆変換ロジック (data_handling.py 準拠)
+# 1. image_preprocessing.py のロジック (完全再現)
 # ==========================================
 
-def get_bbox(mask_array):
-    """マスクからバウンディングボックス(最小包含矩形)の座標を取得"""
-    rows = np.any(mask_array, axis=(1, 2))
-    cols = np.any(mask_array, axis=(0, 2))
-    slices = np.any(mask_array, axis=(0, 1))
-    
-    if not np.any(rows):
-        raise ValueError("Mask is empty.")
-
-    rmin, rmax = np.where(rows)[0][[0, -1]]
-    cmin, cmax = np.where(cols)[0][[0, -1]]
-    smin, smax = np.where(slices)[0][[0, -1]]
-
-    return (rmin, rmax+1), (cmin, cmax+1), (smin, smax+1)
-
-def pad_to_canvas(img, canvas_shape):
-    """画像をキャンバスサイズに合わせてパディング (data_handling.pyより再現)"""
-    # 実際の実装に合わせて調整が必要ですが、ここでは中央寄せパディングを想定
-    dataset_shape = img.shape
-    pads = []
-    for d_img, d_canvas in zip(dataset_shape, canvas_shape):
-        pad_total = max(0, d_canvas - d_img)
-        pad_before = pad_total // 2
-        pad_after = pad_total - pad_before
-        pads.append((pad_before, pad_after))
-    
-    # パディング実行
-    padded_img = np.pad(img, pads, mode='constant', constant_values=0)
-    
-    # キャンバスサイズより大きい場合はクロップ (念のため)
-    slices = tuple(slice(0, d) for d in canvas_shape)
-    return padded_img[slices], pads
-
-def generate_input_data(base_path, mask_path, canvas_shape, mode='crop_and_pad'):
+def crop_roi(roi_array):
     """
-    BaseとMaskからモデル入力画像を生成し、逆変換に必要な座標情報を返す
+    ROIの周囲の0埋めの部分を削除する (image_preprocessing.pyより)
+    """
+    if np.all(roi_array == 0):
+        # ROIがない場合は1x1x1のゼロ配列を返す
+        return np.zeros((1, 1, 1), dtype=roi_array.dtype)
+    indeces = np.array(np.where(roi_array != 0))
+    min_coords = indeces.min(axis=1)
+    max_coords = indeces.max(axis=1)
+    return roi_array[min_coords[0]:max_coords[0]+1,
+                     min_coords[1]:max_coords[1]+1,
+                     min_coords[2]:max_coords[2]+1]
+
+def pad_to_canvas(cropped_array, canvas_shape):
+    """
+    指定されたcanvas_shapeの中央に画像を配置する (image_preprocessing.pyより)
+    """
+    canvas = np.zeros(canvas_shape, dtype=cropped_array.dtype)
+    start_coords = [(cs - da) // 2 for cs, da in zip(canvas_shape, cropped_array.shape)]
+    end_coords = [sc + da for sc, da in zip(start_coords, cropped_array.shape)]
+    canvas[start_coords[0]:end_coords[0],
+              start_coords[1]:end_coords[1],
+              start_coords[2]:end_coords[2]] = cropped_array
+    return canvas
+
+def normalize_intensity(array):
+    """
+    画像の輝度値から[0, 1]の範囲に正規化する (image_preprocessing.pyより)
+    """
+    min_val, max_val = array.min(), array.max()
+    if max_val - min_val > 0:
+        return (array - min_val) / (max_val - min_val)
+    return array
+
+# ==========================================
+# 2. データロード & 処理用ユーティリティ
+# ==========================================
+
+def get_canvas_shape_from_pickle(pickle_path):
+    """
+    Pickleファイルから学習データの形状(canvas_shape)を取得する
+    """
+    print(f"Loading pickle to determine canvas size: {pickle_path}")
+    pickle_path = Path(pickle_path)
+    if not pickle_path.exists():
+        raise FileNotFoundError(f"Pickle file not found: {pickle_path}")
+
+    with open(pickle_path, 'rb') as f:
+        data = pickle.load(f)
+    
+    # data['img_train'] は (N, X, Y, Z, 1) または (N, X, Y, Z) を想定
+    if 'img_train' not in data:
+        raise ValueError("Pickle file does not contain 'img_train' key.")
+    
+    img_shape = data['img_train'].shape
+    
+    # バッチ次元(0)とチャンネル次元(最後)を除いた (X, Y, Z) を取得
+    # make_dataset.pyによると shapeは (N, X, Y, Z, 1)
+    if len(img_shape) == 5:
+        canvas_shape = img_shape[1:4]
+    elif len(img_shape) == 4:
+        canvas_shape = img_shape[1:4] # 念のため
+    else:
+        raise ValueError(f"Unexpected image shape in pickle: {img_shape}")
+    
+    print(f"Detected canvas shape from pickle: {canvas_shape}")
+    return canvas_shape
+
+def generate_model_input_reproduction(base_path, mask_path, canvas_shape):
+    """
+    data_handling.py の create_dataset 関数内の処理フローを再現し、
+    モデル入力用の画像を生成する
     """
     base_nii = nib.load(base_path)
     mask_nii = nib.load(mask_path)
     
     base_data = base_nii.get_fdata().astype(np.float32)
     mask_data = mask_nii.get_fdata().astype(np.float32)
-    affine = base_nii.affine
-    original_shape = base_data.shape
-
-    # ROI抽出
+    
+    # 1. マスク適用
     roi_array = base_data * (mask_data > 0.5)
     
-    transform_info = {
-        'original_shape': original_shape,
-        'affine': affine,
-        'mode': mode
-    }
-
-    if mode == 'crop_and_pad':
-        # 1. Crop
-        bbox = get_bbox(mask_data > 0.5) # マスク範囲でクロップ
-        (r0, r1), (c0, c1), (s0, s1) = bbox
-        cropped_roi = roi_array[r0:r1, c0:c1, s0:s1]
-        
-        transform_info['bbox'] = bbox
-        transform_info['cropped_shape'] = cropped_roi.shape
-
-        # 2. Pad
-        padded_roi, pads = pad_to_canvas(cropped_roi, canvas_shape)
-        transform_info['pads'] = pads
-        
-        processed_img = padded_roi
-        
-    elif mode == 'simple_mask':
-        processed_img = roi_array
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    # Normalize (data_handling.pyのnormalize_intensityに相当する処理)
-    # 簡易的に0-1正規化と仮定 (実際の実装に合わせて修正してください)
-    if processed_img.max() > 0:
-        processed_img = processed_img / processed_img.max()
-
-    return processed_img, transform_info
-
-def restore_heatmap_to_original_space(heatmap, transform_info):
-    """
-    Grad-CAMのヒートマップ(Canvasサイズ)を元の全脳空間(Originalサイズ)に戻す
-    """
-    mode = transform_info['mode']
-    original_shape = transform_info['original_shape']
+    # 2. crop_roi (image_preprocessing.py)
+    cropped = crop_roi(roi_array)
     
-    if mode == 'simple_mask':
-        return heatmap # そのまま
-
-    elif mode == 'crop_and_pad':
-        # 1. Un-Pad (パディング部分を除去)
-        pads = transform_info['pads']
-        # パディング量に基づいてスライスを作成
-        slices = []
-        for i, (pad_before, pad_after) in enumerate(pads):
-            length = heatmap.shape[i]
-            # パディングを除去した範囲
-            start = pad_before
-            end = length - pad_after
-            slices.append(slice(start, end))
+    # 3. pad_to_canvas (image_preprocessing.py)
+    padded = pad_to_canvas(cropped, canvas_shape)
+    
+    # 4. normalize_intensity (image_preprocessing.py)
+    processed_img = normalize_intensity(padded)
         
-        unpadded_heatmap = heatmap[tuple(slices)]
-        
-        # サイズ整合性チェック (数値誤差対策)
-        target_crop_shape = transform_info['cropped_shape']
-        # 必要に応じて微調整リサイズを入れるか、スライスだけで合うはず
-        
-        # 2. Un-Crop (元の全脳空間の正しい位置に埋め込む)
-        restored_volume = np.zeros(original_shape, dtype=np.float32)
-        (r0, r1), (c0, c1), (s0, s1) = transform_info['bbox']
-        
-        # Unpadded heatmapのサイズとbboxサイズが一致するか確認
-        # pad_to_canvasの逆操作で厳密に戻す
-        d0, d1, d2 = unpadded_heatmap.shape
-        # 埋め込み先のサイズに合わせてトリミングまたはパディングが必要な場合の安全策
-        # ここでは単純代入できる前提
-        try:
-            restored_volume[r0:r0+d0, c0:c0+d1, s0:s0+d2] = unpadded_heatmap
-        except ValueError as e:
-            print(f"Warning during shape restoration: {e}. Attempting resize.")
-            # 形状が合わない場合のフェイルセーフなどを検討
-            pass
-            
-        return restored_volume
+    return processed_img
 
 # ==========================================
-# Grad-CAM & Atlas Logic
+# 3. Grad-CAMロジック
 # ==========================================
 
 class RegressionScore(Score):
@@ -154,11 +120,7 @@ class RegressionScore(Score):
             return -1.0 * output[:, 0]
 
 def load_exported_model(model_path):
-    try:
-        return tf.keras.models.load_model(model_path)
-    except Exception as e:
-        # SavedModelの読み込みに失敗した場合、tf.saved_model.loadを試す等の分岐も可能
-        raise e
+    return tf.keras.models.load_model(model_path)
 
 def compute_3d_gradcam(model, img_array, score_mode='increase', target_layer=None):
     replace2linear = ReplaceToLinear()
@@ -173,29 +135,11 @@ def compute_3d_gradcam(model, img_array, score_mode='increase', target_layer=Non
     cam = gradcam(score, input_tensor, penultimate_layer=target_layer, seek_penultimate_conv_layer=True)
     heatmap = cam[0] # (X, Y, Z)
     
-    # 正規化
-    heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
+    heatmap = normalize_intensity(heatmap) # ヒートマップ自体も0-1正規化
     return heatmap
 
-def quantize_with_atlas(heatmap_nii, atlas_name='aal'):
-    if atlas_name == 'aal':
-        dataset = datasets.fetch_atlas_aal(version='SPM12')
-    else:
-        raise ValueError("Unsupported atlas")
-
-    masker = NiftiLabelsMasker(labels_img=dataset.maps, standardize=False, resampling_target='data', verbose=0)
-    
-    # 4D化
-    data = heatmap_nii.get_fdata()
-    img_4d = image.new_img_like(heatmap_nii, np.expand_dims(data, axis=3))
-    
-    scores = masker.fit_transform(img_4d)
-    
-    results = []
-    for i, label in enumerate(dataset.labels):
-        if hasattr(label, 'decode'):
-            label = label.decode('utf-8')
-        results.append((label, scores[0, i]))
-        
-    results.sort(key=lambda x: x[1], reverse=True)
-    return results
+def save_nifti(data, output_path):
+    affine = np.eye(4) # Identity matrix
+    img = nib.Nifti1Image(data, affine)
+    nib.save(img, output_path)
+    print(f"Saved: {output_path}")

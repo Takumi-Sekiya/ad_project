@@ -1,78 +1,82 @@
 import os
 import yaml
-import nibabel as nib
-import pandas as pd
-import numpy as np
 import argparse
+import numpy as np
+from pathlib import Path
+
 from functions.explainability_utils import (
+    get_canvas_shape_from_pickle,
+    generate_model_input_reproduction,
     load_exported_model,
     compute_3d_gradcam,
-    quantize_with_atlas,
-    generate_input_data,
-    restore_heatmap_to_original_space
+    save_nifti
 )
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='analysis_config.yaml')
+    parser.add_argument('--config', type=str, default='analysis_settings.yaml')
     args = parser.parse_args()
 
+    # 設定ロード
     print(f"Loading config: {args.config}")
-    with open(args.config, 'r', encoding='utf-8') as f:
+    with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
 
-    os.makedirs(config['paths']['output_dir'], exist_ok=True)
+    # パス情報の展開 (チルダ展開などに対応するためPathを使用)
+    base_dir = Path.home() / "ad_project"
 
-    # 1. データの生成 (Base + Mask -> Model Input)
-    print("Generating input data from Base and Mask...")
-    img_input, transform_info = generate_input_data(
-        base_path=config['paths']['base_image_path'],
-        mask_path=config['paths']['mask_image_path'],
-        canvas_shape=tuple(config['data']['canvas_shape']),
-        mode=config['data']['roi_processing_mode']
+    # 出力ディレクトリ作成
+    output_dir = base_dir / config['paths']['output_dir']
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 1. Pickleファイルからキャンバスサイズを動的に取得
+    pickle_path = base_dir / config['paths']['dataset_pickle_path']
+    canvas_shape = get_canvas_shape_from_pickle(pickle_path)
+    
+    # 2. 画像生成 (data_handling.pyのロジックを完全再現)
+    print("Generating model input using reproduced preprocessing logic...")
+
+    sub_id = config['paths']['sub_id']
+    base_image_path = base_dir / config['paths']['base_image_path'].format(subject=sub_id)
+    mask_image_path = base_dir / config['paths']['mask_image_path'].format(subject=sub_id)
+
+    img_input = generate_model_input_reproduction(
+        base_path=base_image_path,
+        mask_path=mask_image_path,
+        canvas_shape=canvas_shape
     )
-    
-    print(f"Input shape: {img_input.shape}")
+    print(f"Generated input image shape: {img_input.shape}")
 
-    # 2. モデルのロード
-    model = load_exported_model(config['paths']['model_dir'])
-    
-    # 3. Grad-CAMの実行 (Canvas空間でのヒートマップ)
-    print("Running Grad-CAM...")
+    # 確認用: 入力画像の保存
+    input_save_path = os.path.join(output_dir, "input_roi_image.nii")
+    save_nifti(img_input, input_save_path)
+
+    # 3. モデルロード
+    print("Loading model...")
+    model_dir = base_dir / config['paths']['model_dir']
+    model = load_exported_model(model_dir)
+
+    # 4. Grad-CAM実行
     target_metric = config['analysis']['target_metric_name']
     mode = config['analysis']['score_mode']
+    print(f"Running Grad-CAM for {target_metric} ({mode})...")
     
-    heatmap_canvas = compute_3d_gradcam(
+    heatmap = compute_3d_gradcam(
         model=model,
-        img_array=img_input, # shape: (X, Y, Z) or (X, Y, Z, 1)
+        img_array=img_input,
         score_mode=mode,
         target_layer=config['model']['target_layer']
     )
 
-    # 4. ヒートマップの座標復元 (Canvas空間 -> Original MNI空間)
-    print("Restoring heatmap to original MNI space...")
-    heatmap_original = restore_heatmap_to_original_space(heatmap_canvas, transform_info)
-    
-    # NIfTI保存 (元のAffine情報を使用)
-    original_affine = transform_info['affine']
-    heatmap_nii = nib.Nifti1Image(heatmap_original, original_affine)
-    
-    save_name = f"gradcam_{target_metric}_{mode}_restored.nii.gz"
-    save_path = os.path.join(config['paths']['output_dir'], save_name)
-    nib.save(heatmap_nii, save_path)
-    print(f"Restored heatmap saved to: {save_path}")
+    # 5. ヒートマップ保存
+    heatmap_save_path = os.path.join(output_dir, f"gradcam_{target_metric}.nii")
+    save_nifti(heatmap, heatmap_save_path)
 
-    # 5. アトラス解析 (復元後の画像を使用するので解剖学的に正しい)
-    print("Quantifying with Atlas...")
-    roi_scores = quantize_with_atlas(heatmap_nii, atlas_name=config['analysis']['atlas_name'])
-
-    # 結果保存
-    df = pd.DataFrame(roi_scores, columns=['ROI_Label', 'Importance_Score'])
-    csv_path = os.path.join(config['paths']['output_dir'], f"roi_importance_{target_metric}.csv")
-    df.to_csv(csv_path, index=False)
-    
-    print("\n=== Top 5 Contributing Regions (MNI Space Corrected) ===")
-    print(df.head(5))
+    print("\n=== プロトタイプ作成完了 ===")
+    print(f"処理モード: {mode} (increase=正の寄与, decrease=負の寄与)")
+    print("以下のファイルをビューワーで重ねて確認してください:")
+    print(f"1. 入力画像 (Background): {input_save_path}")
+    print(f"2. ヒートマップ (Overlay): {heatmap_save_path}")
 
 if __name__ == "__main__":
     main()
