@@ -52,9 +52,7 @@ def normalize_intensity(array):
 # ==========================================
 
 def get_canvas_shape_from_pickle(pickle_path):
-    """
-    Pickleファイルから学習データの形状(canvas_shape)を取得する
-    """
+    """Pickleファイルから学習データの形状を取得する"""
     print(f"Loading pickle to determine canvas size: {pickle_path}")
     pickle_path = Path(pickle_path)
     if not pickle_path.exists():
@@ -63,18 +61,16 @@ def get_canvas_shape_from_pickle(pickle_path):
     with open(pickle_path, 'rb') as f:
         data = pickle.load(f)
     
-    # data['img_train'] は (N, X, Y, Z, 1) または (N, X, Y, Z) を想定
     if 'img_train' not in data:
         raise ValueError("Pickle file does not contain 'img_train' key.")
     
     img_shape = data['img_train'].shape
     
-    # バッチ次元(0)とチャンネル次元(最後)を除いた (X, Y, Z) を取得
-    # make_dataset.pyによると shapeは (N, X, Y, Z, 1)
+    # (N, X, Y, Z, 1) -> (X, Y, Z)
     if len(img_shape) == 5:
         canvas_shape = img_shape[1:4]
     elif len(img_shape) == 4:
-        canvas_shape = img_shape[1:4] # 念のため
+        canvas_shape = img_shape[1:4]
     else:
         raise ValueError(f"Unexpected image shape in pickle: {img_shape}")
     
@@ -82,10 +78,7 @@ def get_canvas_shape_from_pickle(pickle_path):
     return canvas_shape
 
 def generate_model_input_reproduction(base_path, mask_path, canvas_shape):
-    """
-    data_handling.py の create_dataset 関数内の処理フローを再現し、
-    モデル入力用の画像を生成する
-    """
+    """モデル入力用の画像を生成する (data_handling.py再現)"""
     base_nii = nib.load(base_path)
     mask_nii = nib.load(mask_path)
     
@@ -94,20 +87,17 @@ def generate_model_input_reproduction(base_path, mask_path, canvas_shape):
     
     # 1. マスク適用
     roi_array = base_data * (mask_data > 0.5)
-    
-    # 2. crop_roi (image_preprocessing.py)
-    cropped = crop_roi(roi_array)
-    
-    # 3. pad_to_canvas (image_preprocessing.py)
-    padded = pad_to_canvas(cropped, canvas_shape)
-    
-    # 4. normalize_intensity (image_preprocessing.py)
-    processed_img = normalize_intensity(padded)
+    # 2. Crop
+    cropped = crop_roi(roi_array) # 上部で定義されている前提
+    # 3. Pad
+    padded = pad_to_canvas(cropped, canvas_shape) # 上部で定義されている前提
+    # 4. Normalize
+    processed_img = normalize_intensity(padded) # 上部で定義されている前提
         
     return processed_img
 
 # ==========================================
-# 3. Grad-CAMロジック
+# 3. Grad-CAMロジック (モデル読み込み修正)
 # ==========================================
 
 class RegressionScore(Score):
@@ -120,26 +110,58 @@ class RegressionScore(Score):
             return -1.0 * output[:, 0]
 
 def load_exported_model(model_path):
-    return tf.keras.models.load_model(model_path)
+    """
+    Keras 3対応のモデル読み込み関数
+    .keras ファイルであることを確認して読み込む
+    """
+    path_obj = Path(model_path)
+    
+    # ディレクトリが指定された場合のエラーハンドリング
+    if path_obj.is_dir():
+        raise ValueError(
+            f"Error: The provided path '{model_path}' is a directory.\n"
+            "Keras 3 (TF 2.16+) no longer supports loading SavedModel directories via load_model.\n"
+            "Please modify your training script (engine.py) to save the model as a '.keras' file "
+            "using `model.save('model.keras', save_format='keras')`."
+        )
+    
+    # 拡張子のチェック (警告のみ)
+    if path_obj.suffix not in ['.keras', '.h5']:
+        print(f"Warning: Model file extension is '{path_obj.suffix}'. Keras 3 recommends '.keras'.")
+
+    print(f"Loading model from: {model_path}")
+    try:
+        model = tf.keras.models.load_model(model_path)
+        return model
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load model from {model_path}.\n"
+            f"Ensure it is a valid Keras model file (.keras or .h5).\nOriginal Error: {e}"
+        )
 
 def compute_3d_gradcam(model, img_array, score_mode='increase', target_layer=None):
+    """3D Grad-CAMの計算"""
     replace2linear = ReplaceToLinear()
+    
+    # モデル構造のチェック
+    if not isinstance(model, tf.keras.Model):
+         raise ValueError("The loaded object is not a valid Keras Model. Ensure it was saved/loaded correctly.")
+
     gradcam = Gradcam(model, model_modifier=replace2linear, clone=True)
     score = RegressionScore(mode=score_mode)
     
-    # (X, Y, Z) -> (1, X, Y, Z, 1)
     input_tensor = np.expand_dims(img_array, axis=0) 
     if input_tensor.ndim == 4:
         input_tensor = np.expand_dims(input_tensor, axis=-1)
 
     cam = gradcam(score, input_tensor, penultimate_layer=target_layer, seek_penultimate_conv_layer=True)
-    heatmap = cam[0] # (X, Y, Z)
+    heatmap = cam[0]
     
-    heatmap = normalize_intensity(heatmap) # ヒートマップ自体も0-1正規化
+    heatmap = normalize_intensity(heatmap)
     return heatmap
 
 def save_nifti(data, output_path):
-    affine = np.eye(4) # Identity matrix
+    affine = np.eye(4)
     img = nib.Nifti1Image(data, affine)
     nib.save(img, output_path)
     print(f"Saved: {output_path}")
