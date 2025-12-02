@@ -101,7 +101,10 @@ def run_training(model: tf.keras.Model, train_ds, test_ds, config: dict):
     print(f"Artifacts will be saved to: {output_dir}")
 
     # 5-2. 訓練済みモデルの保存
-    model.export(os.path.join(output_dir, "model"))
+    #model.export(os.path.join(output_dir, "model"))
+
+    save_path = os.path.join(output_dir, "model.keras")
+    model.save(save_path, save_format="keras")
 
     # 5-3. 訓練データとテストデータで予測を実行
     y_train_true = np.concatenate([y for _, y in train_ds.batch(batch_size)])
