@@ -27,11 +27,11 @@ function func_06_normalize(processed_data_dir, subject_ids, dartel_template_dir,
         if ~exist(output_dir, 'dir'), mkdir(output_dir); end
         
         if ~exist(flowfield_file, 'file')
-            warning('Skipping normalization for %s: Input file not found.', sub_id);
+            warning('Skipping normalization for %s: flowfield file not found.', sub_id);
             continue;
         end
 
-        if ~exist(image_to_normalize, 'file') || ~exist(flowfield_file, 'file')
+        if ~exist(image_to_normalize, 'file')
             warning('Skipping normalization for %s: Input file or flowfield not found.', sub_id);
             continue;
         end
