@@ -253,9 +253,7 @@ def step_05_extract_subfield_masks(sub_id):
             if f.exists(): f.unlink()
 
         match_str = " ".join(map(str, roi['labels']))
-
-
-
+        
         # 1. LHマスク作成 (Temp LH)
         cmd_lh = (
             f"bash -c \"{setup_cmd} && "
