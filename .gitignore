@@ -17,6 +17,7 @@ data/*
 !data/process_scripts/
 output/
 mlruns/
+analysis/
 
 # ファイル名が含まれるconfigを無視
 src/config/*
