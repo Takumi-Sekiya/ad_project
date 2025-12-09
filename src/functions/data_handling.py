@@ -7,6 +7,21 @@ from tqdm import tqdm
 
 from .image_preprocessing import crop_roi, pad_to_canvas, normalize_intensity
 
+def load_and_preprocess_mask(mask_path, threshold=100):
+    """
+    マスク画像を読み込み、必要に応じて2値化(0 or 1)するヘルパー関数
+    """
+    # 画像読み込み
+    mask_nii = nib.load(mask_path)
+    mask_data = mask_nii.get_fdata().astype(np.float32)
+
+    # 提案されたロジック: 最大値が1より大きい場合（0-255スケールと判断）
+    if mask_data.max() > 1.0:
+        # 閾値以上を1, 未満を0に変換
+        mask_data = np.where(mask_data >= threshold, 1.0, 0.0)
+    
+    return mask_data
+
 def load_and_match_data(data_dir, csv_path, path_templates, target_columns):
     """
     臨床データと画像ファイルを読み込み, IDを基準に紐づける
@@ -55,7 +70,7 @@ def determine_target_canvas_size(df):
     print("最適なキャンバスサイズを計算中...")
     for _, row in tqdm(df.iterrows(), total=len(df)):
         base_img = nib.load(row['base']).get_fdata()
-        mask_img = nib.load(row['mask']).get_fdata()
+        mask_img = load_and_preprocess_mask(row['mask'], threshold=100)
 
         roi_array = base_img * (mask_img > 0.5)
         cropped_roi = crop_roi(roi_array)
@@ -70,7 +85,7 @@ def create_dataset(df, mode, target_columns, canvas_shape=None):
     print(f"データセットを生成中 (モード: {mode})...")
     for _, row in tqdm(df.iterrows(), total=len(df)):
         base_img = nib.load(row['base']).get_fdata().astype(np.float32)
-        mask_img = nib.load(row['mask']).get_fdata().astype(np.float32)
+        mask_img = load_and_preprocess_mask(row['mask'], threshold=100)
         roi_array = base_img * (mask_img > 0.5)
 
         if mode == 'crop_and_pad':
