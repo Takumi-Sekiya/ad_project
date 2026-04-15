@@ -10,10 +10,12 @@ final_columns:
   gm_atrophy:
     type: numeric
     scale: true
+    upper_percentile: 90
     inverse: false
   severity:
     type: numeric
     scale: true
+    upper_percentile: 90
     inverse: false
   SUVR:
     type: numeric

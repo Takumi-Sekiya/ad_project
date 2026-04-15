@@ -84,7 +84,7 @@ def process_source_file(source_info, raw_data_dir):
 
 def finalize_and_save_data(df, final_columns_info, output_path):
     """
-    最終的なDataFrameを整形、正規化し、CSVとして保存する.
+    最終的なDataFrameを整形、正規化（パーセンタイル対応）し、CSVとして保存する.
     """
     df.reset_index(inplace=True)
     df.rename(columns={'index': 'subject_id'}, inplace=True)
@@ -93,38 +93,52 @@ def finalize_and_save_data(df, final_columns_info, output_path):
 
     # 1. データ型の統一とスケーリング処理
     for col_name, col_info in final_columns_info.items():
-        # 数値型へのキャスト
         if col_name in df.columns and col_info.get("type") == 'numeric':
             df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
 
             # スケーリングの処理
             if col_info.get("scale") is True:
                 min_val = df[col_name].min()
-                max_val = df[col_name].max()
+                
+                # パーセンタイル設定の取得 (デフォルトは100 = 最大値)
+                upper_pct = col_info.get("upper_percentile", 100)
+                if not (0 < upper_pct <= 100):
+                    print(f" - 警告: {col_name} の upper_percentile は 0 より大きく 100 以下の数値で指定してください. 100として扱います.")
+                    upper_pct = 100
+                
+                # 指定されたパーセンタイル値を計算 (100の場合は最大値と同じ)
+                max_ref_val = df[col_name].quantile(upper_pct / 100.0)
+                
                 invert = col_info.get("invert", False)
                 scaled_col_name = f"scaled_{col_name}"
 
-                # 欠損値しかない、または最大値と最小値が等しい（ゼロ除算防止）場合のハンドリング
-                if pd.isna(min_val) or pd.isna(max_val) or min_val == max_val:
-                    print(f" - 警告: カラム '{col_name}' は有効な分散がないためスケーリングをスキップ、または0埋めします.")
+                # 有効な分散がない場合のハンドリング
+                if pd.isna(min_val) or pd.isna(max_ref_val) or min_val == max_ref_val:
+                    print(f" - 警告: カラム '{col_name}' は有効な分散がないため0埋めします.")
                     df[scaled_col_name] = 0.0
                 else:
-                    # 正規化 (0〜1)
-                    df[scaled_col_name] = (df[col_name] - min_val) / (max_val - min_val)
+                    # 正規化計算
+                    df[scaled_col_name] = (df[col_name] - min_val) / (max_ref_val - min_val)
+                    
+                    # 1を超える値(外れ値)を1.0に、念のため0未満を0.0にクリッピング
+                    df[scaled_col_name] = df[scaled_col_name].clip(lower=0.0, upper=1.0)
+                    
                     # 反転処理
                     if invert:
                         df[scaled_col_name] = 1.0 - df[scaled_col_name]
 
-                # メタデータの記録 (NaNの場合は記録のためにNoneに変換)
+                # メタデータの記録
                 scaling_metadata[col_name] = {
                     "original_column": col_name,
                     "scaled_column": scaled_col_name,
                     "min": float(min_val) if not pd.isna(min_val) else None,
-                    "max": float(max_val) if not pd.isna(max_val) else None,
+                    "max_reference_value": float(max_ref_val) if not pd.isna(max_ref_val) else None,
+                    "upper_percentile_used": upper_pct,
+                    "actual_max": float(df[col_name].max()) if not pd.isna(df[col_name].max()) else None,
                     "inverted": invert
                 }
 
-    # 2. カラムの順序を整理 (元のfinal_columns + 追加されたscaledカラム + その他)
+    # 2. カラムの順序を整理
     final_order = [col for col in final_columns_info.keys() if col in df.columns]
     scaled_cols = [f"scaled_{col}" for col in scaling_metadata.keys()]
     other_cols = [col for col in df.columns if col not in final_order and col not in scaled_cols]
@@ -135,7 +149,7 @@ def finalize_and_save_data(df, final_columns_info, output_path):
     df.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f"統合後データが {output_path} に保存されました.")
 
-    # 4. スケーリング用メタデータの保存（設定がある場合のみ）
+    # 4. スケーリング用メタデータの保存
     if scaling_metadata:
         metadata_path = output_path.parent / "scaling_metadata.json"
         with open(metadata_path, 'w', encoding='utf-8') as f:
@@ -143,7 +157,6 @@ def finalize_and_save_data(df, final_columns_info, output_path):
         print(f"スケーリング情報（メタデータ）が {metadata_path} に保存されました.")
 
     print(f"合計 {len(df)} 件のユニークIDが処理されました.")
-    df.info()
 
 def main():
     """
@@ -165,7 +178,6 @@ def main():
         if master_df.empty:
             master_df = temp_df
         else:
-            # 【重要】updateからcombine_firstへの修正（欠損値を互いに補完し、新規カラムもマージする）
             master_df = temp_df.combine_first(master_df)
 
     finalize_and_save_data(master_df, final_columns_info, OUTPUT_FILE)
