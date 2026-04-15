@@ -55,12 +55,15 @@ def prepare_full_dataset(config: dict, base_dir: Path):
     
     processed_data_dir = base_dir / gen_cfg['raw_data_base_dir']
     csv_path = base_dir / gen_cfg['clinical_csv_path']
+
+    allowed_diagnoses = gen_cfg.get('allowed_diagnoses', None)
     
     matched_df = load_and_match_data(
         processed_data_dir, 
         csv_path, 
         gen_cfg['path_templates'], 
-        gen_cfg['columns_to_extract']
+        gen_cfg['columns_to_extract'],
+        allowed_diagnoses=allowed_diagnoses
     )
     
     if matched_df.empty:

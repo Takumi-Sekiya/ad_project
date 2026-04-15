@@ -24,6 +24,12 @@ dataset_generation:
   # デフォルト値（コマンドライン引数がない場合に使用）
   mask_name: 'prefrontal-cortex'
   roi_processing_mode: 'crop_and_pad'
+
+  # 抽出したい診断名に含まれる文字列のリスト
+  allowed_diagnoses: 
+    - "AD"
+    - "MCI"
+    - "正常"
   
   # ここはスクリプト側で [target_variable] の1要素のみに書き換えられる
   columns_to_extract:

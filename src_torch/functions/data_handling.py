@@ -22,7 +22,7 @@ def load_and_preprocess_mask(mask_path, threshold=100):
     
     return mask_data
 
-def load_and_match_data(data_dir, csv_path, path_templates, target_columns):
+def load_and_match_data(data_dir, csv_path, path_templates, target_columns, allowed_diagnoses=None):
     """
     臨床データと画像ファイルを読み込み, IDを基準に紐づける
     """
@@ -32,10 +32,13 @@ def load_and_match_data(data_dir, csv_path, path_templates, target_columns):
         print(f"エラー: 臨床データファイルが見つかりません: {csv_path}")
         return pd.DataFrame()
 
-    required_columns = ['subject_id'] + target_columns
+    # 'diagnosis' を必須カラムチェックに含める
+    check_columns = ['subject_id'] + target_columns
+    if allowed_diagnoses is not None and 'diagnosis' not in check_columns:
+        check_columns.append('diagnosis')
 
-    if not all(col in df_clinical.columns for col in required_columns):
-        missing_cols = [col for col in required_columns if col not in df_clinical.columns]
+    if not all(col in df_clinical.columns for col in check_columns):
+        missing_cols = [col for col in check_columns if col not in df_clinical.columns]
         print(f"エラー: CSVファイルにカラムが見つかりません: {', '.join(missing_cols)}")
         return pd.DataFrame()
     
@@ -45,8 +48,23 @@ def load_and_match_data(data_dir, csv_path, path_templates, target_columns):
         print(f"警告: 異なるシート間で {num_duplicates} 件の 'subject_id' の重複が見つかりました. 最初の出現データを使用します. ")
         df_clinical = df_clinical.drop_duplicates(subset=['subject_id'], keep='first')
 
-    # 必要なカラムのみ抽出し、欠損値を持つ行を削除
-    df_clinical = df_clinical[required_columns].dropna()
+    # 診断名のフィルタリングを実施
+    if allowed_diagnoses is not None:
+        df_clinical = df_clinical.dropna(subset=['diagnosis']) # 診断名が欠損している行は除外
+        
+        # allowed_diagnosesのいずれかの文字列が含まれているかチェック (正規表現のOR条件を作成)
+        pattern = '|'.join(allowed_diagnoses)
+        initial_count = len(df_clinical)
+        
+        # 部分一致でフィルタリング
+        df_clinical = df_clinical[df_clinical['diagnosis'].astype(str).str.contains(pattern, na=False, regex=True)]
+        
+        filtered_count = len(df_clinical)
+        print(f"診断名フィルタを適用: {initial_count}件 -> {filtered_count}件に絞り込みました。 (条件: {allowed_diagnoses})")
+
+    # 必要なカラムのみ抽出処理に使うために欠損値を持つ行を削除
+    required_columns = ['subject_id'] + target_columns
+    df_clinical = df_clinical.dropna(subset=required_columns)
 
     file_data = []
     print("臨床データと画像ファイルのマッチングを開始します...")
@@ -63,6 +81,7 @@ def load_and_match_data(data_dir, csv_path, path_templates, target_columns):
             missing_files = [os.path.basename(p) for p in paths.values() if not os.path.exists(p)]
             print(f"{sub_id} skipped.", end=' ')
 
+    print("\nマッチング完了.")
     return pd.DataFrame(file_data)
 
 def determine_target_canvas_size(df):
