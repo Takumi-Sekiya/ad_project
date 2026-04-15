@@ -1,0 +1,125 @@
+# mapping.yaml
+# python src/create_structured_data.py
+
+# 統一後のカラム名とデータ型の定義
+final_columns:
+  subject_id:
+    type: string
+  diagnosis:
+    type: string
+  gm_atrophy:
+    type: numeric
+    scale: true
+    inverse: false
+  severity:
+    type: numeric
+    scale: true
+    inverse: false
+  SUVR:
+    type: numeric
+  MMSE:
+    type: numeric
+    scale: true
+    inverse: true
+  HDSR:
+    type: numeric
+    scale: true
+    inverse: true
+  #ADAS:
+  #  type: numeric
+  CDR: 
+    type: numeric
+  CDR_sum:
+    type: numeric
+  Moca-J:
+    type: numeric
+  
+# データソースの定義
+sources:
+# - file:
+#   sheet:
+#   skip_after_header:
+#   columns:
+#     subject_id:
+
+  - file: "■■MRI-ASL症例リスト入力書式2024年10月21日作成版（山大版）20241212最終（匿名化）.xlsx"
+    sheet: "森岡先生（ベースライン）"
+    skip_after_header: 3
+    columns:
+      subject_id: "研究用匿名化ID"
+      diagnosis: "主診断名"
+      gm_atrophy: "灰白質の全脳萎縮の割合\nExtent of GM atrophy"
+      severity: "A)SVA　重症度"
+      SUVR: "SUVR"
+      MMSE: "MMSE"
+      HDSR: "HDSR"
+      #ADAS: "ADAS10単語記名平均"
+      CDR: "CDR"
+      CDR_sum: "CDR-Sum"
+      Moca-J: "Moca-J　合計計算点"
+  
+  - file: "■■MRI-ASL症例リスト入力書式2024年10月21日作成版（山大版）20241212最終（匿名化）.xlsx"
+    sheet: "小林先生（ベースライン）"
+    skip_after_header: 3
+    columns:
+      subject_id: "研究用匿名化ID"
+      diagnosis: "主診断名"
+      gm_atrophy: "灰白質の全脳萎縮の割合\nExtent of GM atrophy"
+      severity: "A)SVA　重症度"
+      SUVR: "SUVR"
+      MMSE: "MMSE"
+      HDSR: "HDSR"
+      #ADAS: "ADAS10単語記名平均"
+      CDR: "CDR"
+      CDR_sum: "CDR-Sum"
+      Moca-J: "Moca-J　合計計算点"
+  
+  - file: "■■VSRAD篠田正常例全例17例EONC（厚労用ID匿名化）.xlsx"
+    sheet: "Sheet1"
+    columns:
+      subject_id: "研究用ID"
+      diagnosis: "診断1"
+      MMSE: "MMS"
+      HDSR: "HDSR"
+      #ADAS: "平均"
+
+  - file: "■■VSRAD篠田正常例全例26例LONC老年正常（厚労用ID匿名化）.xlsx"
+    sheet: "Sheet1"
+    columns:
+      subject_id: "研究用ID"
+      diagnosis: "診断1"
+      MMSE: "MMS"
+      HDSR: "HDSR"
+      #ADAS: "平均"
+
+  - file: "【提出用・データ貼付】■■MRI-ASL症例リスト入力書式2025年3月31日作成版（施設間統一用）匿名化.xlsx"
+    sheet: "Sheet1"
+    skip_after_header: 4
+    columns:
+      subject_id: "研究用匿名化ID"
+      diagnosis: "主診断名"
+      gm_atrophy: "灰白質の全脳萎縮の割合\nExtent of GM atrophy"
+      severity: "A)SVA　重症度"
+      SUVR: "SUVR"
+      MMSE: "MMSE"
+      HDSR: "HDSR"
+      #ADAS: "ADAS10単語記名平均"
+      CDR: "CDR"
+      CDR_sum: "CDR-Sum"
+      Moca-J: "Moca-J　合計計算点"
+
+  - file: "AMCMRI-ASL症例リスト入力書式2026年2月26日作成版（匿名化）.xlsx"
+    sheet: "Sheet1"
+    skip_after_header: 4
+    columns:
+      subject_id: "研究用匿名化ID"
+      diagnosis: "主診断名"
+      gm_atrophy: "左Z値"
+      severity: "脳血流検査ECD"
+      SUVR: "SUVR"
+      MMSE: "MMSE"
+      HDSR: "HDSR"
+      #ADAS: "ADAS10単語記名平均"
+      CDR: "CDR"
+      CDR_sum: "CDR-Sum"
+      Moca-J: "Moca-J　合計計算点"

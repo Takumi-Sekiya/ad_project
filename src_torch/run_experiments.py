@@ -1,4 +1,4 @@
-# python src/run_experiments.py
+# python src_torch/run_experiments.py
 
 import subprocess
 import sys
@@ -16,15 +16,15 @@ def run_experiments():
     # 実験を行いたい出力指標（Target）のリスト
     target_list = [
         'MMSE',
-        #'HDSR',
-        #'gm_atrophy',
+        'HDSR',
+        'gm_atrophy',
     ]
 
     # ベースとなるconfigファイルのパス
-    config_path = 'src/config/config.yaml'
+    config_path = 'src_torch/config/config.yaml'
     
     # メインスクリプトのパス
-    main_script_path = 'src/main_cross.py'
+    main_script_path = 'src_torch/main_cross.py'
 
     # ------------------
 
@@ -42,7 +42,7 @@ def run_experiments():
             print(f"{'='*60}\n")
 
             # コマンドの構築
-            # python src/main.py --config ... --roi ... --target ...
+            # python src_torch/main.py --config ... --roi ... --target ...
             cmd = [
                 sys.executable,  # 現在のPythonインタプリタのパス
                 main_script_path,

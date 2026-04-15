@@ -90,7 +90,8 @@ def generate_dataset_phase(config: dict, base_dir: Path) -> Path:
     # ターゲットに欠損がある行は load_and_match_data ですでに落ちているはずですが念のため
     matched_df = matched_df.dropna(subset=[stratify_target])
     
-    bins = pd.cut(matched_df[stratify_target], bins=5, labels=False, duplicates='drop')
+    #bins = pd.cut(matched_df[stratify_target], bins=5, labels=False, duplicates='drop')
+    bins = pd.qcut(matched_df[stratify_target], q=5, labels=False, duplicates="drop")
     train_df, test_df = train_test_split(
         matched_df,
         test_size=training_cfg['test_size'],

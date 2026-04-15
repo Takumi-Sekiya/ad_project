@@ -1,0 +1,42 @@
+# analysis_settings.yaml
+# python src/run_analysis.py --config src/config/analysis_settings.yaml
+
+# パスはすべてad_projectディレクトリを基準とした相対パスで指定
+paths:
+  # model.export() で保存されたモデルディレクトリへのパス
+  #model_dir: "output/3DResNet_{input_region}_to_{target_metric_name}/model.keras"
+  model_dir: "output/Regulated3DResNet_{input_region}_to_{target_metric_name}_cross_reg/cross{cross_num}/model.keras"
+  
+  # 学習時に作成されたデータセットのPickleファイル (.pkl)
+  # ここからキャンバスサイズ (canvas_shape) を取得
+  dataset_pickle_path: "data/processed/dataset_{input_region}_{target_metric_name}_fold0.pkl"
+  testdata_mapping_path: "data/processed/cross_validation_mapping_hippocampus_{target_metric_name}.xlsx"
+  #testdata_mapping_path: "data/processed/cross_validation_mapping_{input_region}_{target_metric_name}.xlsx"
+
+  # テストする被験者の元データとマスク
+  base_image_path: "data/derivatives/processed_data/{subject}/spm/norm/mw{subject}_T1w.nii"
+  mask_image_path: "data/derivatives/processed_data/{subject}/spm/norm/w{subject}_mask-{input_region}.nii"
+  
+  # 結果出力先
+  #output_dir: "analysis/{input_region}_to_{target_metric_name}/{sub_id}"
+  output_dir: "analysis/{input_region}_to_{target_metric_name}_cross_reg/cross{cross_num}/{sub_id}"
+
+model:
+  # 解析対象の層 (Noneなら自動)
+  target_layer: null
+
+analysis:
+  # 解析対象
+  input_region: "whole-hippocampus" 
+  target_metric_name: "gm_atrophy"  # "gm_atrophy", "MMSE", "HDSR"
+  sub_id:
+    - "SND_SIK_9002_70_0_1"  # 老年者健常者
+    - "AMC_SIK_0010_75_0_01" # 軽症患者
+    - "AMC_SIK_0003_80_0_3"  # 中程度患者
+    - "AMC_SIK_0021_88_0_01" # 重症患者
+
+  # スコアの寄与方向
+  # 'increase' (正の寄与: 萎縮度gm_atrophy, 血流低下severity, SUVR) 
+  # 'decrease' (負の寄与: MMSE, HDSR, Moca-J)
+  # 基本'increase'で解析し、必要に応じて'decrease'で再解析
+  score_mode: "increase"

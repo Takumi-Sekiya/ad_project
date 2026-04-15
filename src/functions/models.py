@@ -5,6 +5,7 @@ from tensorflow.keras.layers import (
     Concatenate, Add, Activation
 )
 from tensorflow.keras.initializers import HeNormal
+from tensorflow.keras.regularizers import l2
 
 def build_simple_3dcnn(input_shape: tuple, config: dict) -> Model:
     """
@@ -127,6 +128,31 @@ def _resnet_basic_block(input_tensor, kernel_size, filters, strides=(1, 1, 1)):
 
     return x
 
+def _regulated_resnet_basic_block(input_tensor, kernel_size, filters, strides=(1, 1, 1)):
+    """
+    3D ResNet18/34用のBasic Block.
+    正則化を意識して改変.
+    ハイパーパラメータ：
+    - kernel_regularizer: L2正則化の強さ
+    """
+    x = Conv3D(filters, kernel_size, strides=strides, padding='same', activation=None, kernel_regularizer=l2(1e-4))(input_tensor)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    x = Conv3D(filters, kernel_size, padding='same', activation=None, kernel_regularizer=l2(1e-4))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    shortcut = input_tensor
+    if strides != (1, 1, 1) or input_tensor.shape[-1] != filters:
+        shortcut = Conv3D(filters, (1, 1, 1), strides=strides)(input_tensor)
+        shortcut = BatchNormalization()(shortcut)
+    
+    x = Add()([x, shortcut])
+    x = Activation('relu')(x)
+
+    return x
+
 def build_3d_resnet(input_shape: tuple, config: dict) -> Model:
     """
     3DResNetモデルを構築する.
@@ -165,11 +191,54 @@ def build_3d_resnet(input_shape: tuple, config: dict) -> Model:
 
     return model
 
+def build_regulated_3d_resnet(input_shape: tuple, config: dict) -> Model:
+    """
+    3DResNetモデルを構築する.
+    ResNet18に近いモデル.
+    正則化を意識して改変.
+    ハイパーパラメータ：
+    - 残差ネットの個数
+    - 残差ネットの各層のフィルタ数
+    """
+    dropout_rate = config['model']['params']['dropout_rate']
+
+    img_input = Input(shape=input_shape, name='img_input')
+
+    x = Conv3D(32, (5, 5, 5), padding='same', activation='relu')(img_input)
+    x = MaxPooling3D((2, 2, 2), padding='same')(x)
+    x = BatchNormalization()(x)
+
+    x = _resnet_basic_block(x, 3, 32)
+    x = _resnet_basic_block(x, 3, 32)
+
+    x = _regulated_resnet_basic_block(x, 3, 64, strides=(2, 2, 2))
+    x = _regulated_resnet_basic_block(x, 3, 64)
+
+    x = _regulated_resnet_basic_block(x, 3, 128, strides=(2, 2, 2))
+    x = _regulated_resnet_basic_block(x, 3, 128)
+
+    #x = _resnet_basic_block(x, 3, 256, strides=(2, 2, 2))
+    #x = _resnet_basic_block(x, 3, 256)
+
+    x = GlobalAveragePooling3D()(x)
+
+    #x = Dense(128, activation='relu', kernel_initializer=HeNormal())(x)
+    #x = Dropout(dropout_rate)(x)
+    x = Dense(64, activation='relu', kernel_initializer=HeNormal())(x)
+    x = Dropout(dropout_rate)(x)
+
+    output = Dense(1, activation='linear', name='output')(x)
+
+    model = Model(inputs=img_input, outputs=output)
+
+    return model
+
 
 MODEL_REGISTRY = {
     "Simple3DCNN": build_simple_3dcnn,
     "Multimodal3DCNN": build_multimodal_3dcnn,
     "3DResNet": build_3d_resnet,
+    "Regulated3DResNet": build_regulated_3d_resnet,
     # 新しいモデルを追加
 }
 

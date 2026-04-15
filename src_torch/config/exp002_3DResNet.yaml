@@ -1,0 +1,54 @@
+# src/config/exp002_3DResNet.yaml
+
+# 1. 実験の基本情報
+experiment_name: "gm_atrophy_Prediction"
+run_name: "3DResNet_on_prefrontal-cortex_to_gm_atrophy_for_analysis"
+
+# 2. データの指定
+data:
+  pickle_path: "data/processed/dataset_prefrontal-cortex_gm_atrophy.pkl"
+  target_variable: "gm_atrophy"
+  tabular_input_features: []
+
+# 3. モデルの指定
+model:
+  name: "3DResNet"
+  params: 
+    dropout_rate: 0.3
+
+# 4. 学習のパラメータ
+training:
+  optimizer:
+    name: "Adam"
+    params:
+      learning_rate: 0.001
+
+  loss: "mean_squared_error"
+  batch_size: 8
+
+  stages:
+    - stage_name: "WarmupPhase"
+      epochs: 50
+      learning_rate: 0.001
+      callbacks: []
+    
+    - stage_name: "FineTuningPhase"
+      epochs: 50
+      learning_rate: 0.001
+      callbacks:
+        - name: "EarlyStopping"
+          params:
+            monitor: "val_loss"
+            patience: 15
+            restore_best_weights: True
+            verbose: 1
+        - name: "ReduceLROnPlateau"
+          params: 
+            monitor: "val_loss"
+            factor: 0.5
+            patience: 5
+            min_lr: 0.00001
+
+# 5. 再現性のための設定
+environment:
+  seed: 42

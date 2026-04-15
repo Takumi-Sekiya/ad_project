@@ -1,0 +1,84 @@
+# config.yaml
+# python src/main_cross.py --config src/config/config.yaml --roi prefrontal-cortex --target MMSE
+
+
+# --- 実験管理情報 ---
+experiment_name: "gm_atrophy_Prediction"
+# run_name はスクリプト側で {ROI}_{Target} を含んだ名前に自動更新される
+run_name: "3DResNet_Default"
+
+# --- 1. データセット生成の設定 ---
+dataset_generation:
+  raw_data_base_dir: 'data/derivatives/processed_data'
+  clinical_csv_path: 'data/processed/structured_data.csv'
+  
+  output_dir: 'data/processed'
+  # {mask_name}, {target_name} はスクリプト内で置換される
+  filename_template: 'dataset_{mask_name}_{target_name}.pkl'
+
+  path_templates:
+    base: 'spm/norm/mw{subject}_T1w.nii'
+    # maskのパスはスクリプト側で ROI名 に応じて動的に生成される
+    mask: 'spm/norm/w{subject}_mask-{roi}.nii'
+  
+  # デフォルト値（コマンドライン引数がない場合に使用）
+  mask_name: 'prefrontal-cortex'
+  roi_processing_mode: 'crop_and_pad'
+  
+  # ここはスクリプト側で [target_variable] の1要素のみに書き換えられる
+  columns_to_extract:
+    - 'gm_atrophy'
+
+# --- 2. モデル学習のためのデータ設定 ---
+data:
+  # pickle_path も自動生成されるため、ここはプレースホルダー的な扱い
+  pickle_path: "data/processed/dataset_prefrontal-cortex_gm_atrophy.pkl"
+  
+  target_variable: "gm_atrophy"
+  tabular_input_features: []
+
+# --- 3. モデルアーキテクチャ ---
+model:
+  name: "Regulated3DResNet" # 3DResNet, Regulated3DResNet
+  params: 
+    dropout_rate: 0.3
+
+# --- 4. 学習・分割パラメータ ---
+training:
+  test_size: 0.2
+  random_state: 42
+
+  optimizer:
+    name: "Adam"
+    params:
+      learning_rate: 0.001
+
+  loss: "mean_squared_error"
+  batch_size: 2
+
+  stages:
+    - stage_name: "WarmupPhase"
+      epochs: 50
+      learning_rate: 0.001
+      callbacks: []
+    
+    - stage_name: "FineTuningPhase"
+      epochs: 50
+      learning_rate: 0.001
+      callbacks:
+        - name: "EarlyStopping"
+          params:
+            monitor: "val_loss"
+            patience: 15
+            restore_best_weights: True
+            verbose: 1
+        - name: "ReduceLROnPlateau"
+          params: 
+            monitor: "val_loss"
+            factor: 0.5
+            patience: 5
+            min_lr: 0.00001
+
+# --- 5. 環境設定 ---
+environment:
+  seed: 42
