@@ -1,5 +1,6 @@
 import pandas as pd
 import yaml
+import json
 from pathlib import Path
 import sys
 
@@ -7,7 +8,7 @@ import sys
 BASE_DIR = Path(__file__).resolve().parent.parent
 RAW_DATA_DIR = BASE_DIR / "data" / "raw_data"
 PROCESSED_DATA_DIR = BASE_DIR / "data" / "processed"
-MAPPING_FILE = BASE_DIR / "src" / "config" / "mapping.yaml"
+MAPPING_FILE = BASE_DIR / "src_torch" / "config" / "mapping.yaml"
 OUTPUT_FILE = PROCESSED_DATA_DIR / "structured_data.csv"
 
 def load_config(mapping_file_path):
@@ -56,6 +57,7 @@ def process_source_file(source_info, raw_data_dir):
             return None
     except Exception as e:
         print(f"エラー: ファイル読み込みに失敗しました。\n詳細: {e}")
+        return None
         
     # カラム整形
     rename_dict = {v: k for k, v in source_info.get("columns", {}).items()}
@@ -82,30 +84,64 @@ def process_source_file(source_info, raw_data_dir):
 
 def finalize_and_save_data(df, final_columns_info, output_path):
     """
-    最終的なDataFrameを整形し, CSVとして保存する.
+    最終的なDataFrameを整形、正規化し、CSVとして保存する.
     """
-    #if df.empty():
-    #    print(f"エラー: 処理結果が空です. 処理を中止します.")
-    #    sys.exit(1)
-
     df.reset_index(inplace=True)
     df.rename(columns={'index': 'subject_id'}, inplace=True)
 
-    # データ型の統一
+    scaling_metadata = {}
+
+    # 1. データ型の統一とスケーリング処理
     for col_name, col_info in final_columns_info.items():
+        # 数値型へのキャスト
         if col_name in df.columns and col_info.get("type") == 'numeric':
             df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
 
-    # カラムの順序を final_columns に揃える
-    final_order = [col for col in final_columns_info.keys() if col in df.columns]
-    other_cols = [col for col in df.columns if col not in final_order]
-    df = df[final_order + other_cols]
+            # スケーリングの処理
+            if col_info.get("scale") is True:
+                min_val = df[col_name].min()
+                max_val = df[col_name].max()
+                invert = col_info.get("invert", False)
+                scaled_col_name = f"scaled_{col_name}"
 
-    # 出力
+                # 欠損値しかない、または最大値と最小値が等しい（ゼロ除算防止）場合のハンドリング
+                if pd.isna(min_val) or pd.isna(max_val) or min_val == max_val:
+                    print(f" - 警告: カラム '{col_name}' は有効な分散がないためスケーリングをスキップ、または0埋めします.")
+                    df[scaled_col_name] = 0.0
+                else:
+                    # 正規化 (0〜1)
+                    df[scaled_col_name] = (df[col_name] - min_val) / (max_val - min_val)
+                    # 反転処理
+                    if invert:
+                        df[scaled_col_name] = 1.0 - df[scaled_col_name]
+
+                # メタデータの記録 (NaNの場合は記録のためにNoneに変換)
+                scaling_metadata[col_name] = {
+                    "original_column": col_name,
+                    "scaled_column": scaled_col_name,
+                    "min": float(min_val) if not pd.isna(min_val) else None,
+                    "max": float(max_val) if not pd.isna(max_val) else None,
+                    "inverted": invert
+                }
+
+    # 2. カラムの順序を整理 (元のfinal_columns + 追加されたscaledカラム + その他)
+    final_order = [col for col in final_columns_info.keys() if col in df.columns]
+    scaled_cols = [f"scaled_{col}" for col in scaling_metadata.keys()]
+    other_cols = [col for col in df.columns if col not in final_order and col not in scaled_cols]
+    df = df[final_order + scaled_cols + other_cols]
+
+    # 3. データの出力
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False, encoding='utf-8-sig')
-
     print(f"統合後データが {output_path} に保存されました.")
+
+    # 4. スケーリング用メタデータの保存（設定がある場合のみ）
+    if scaling_metadata:
+        metadata_path = output_path.parent / "scaling_metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(scaling_metadata, f, indent=4, ensure_ascii=False)
+        print(f"スケーリング情報（メタデータ）が {metadata_path} に保存されました.")
+
     print(f"合計 {len(df)} 件のユニークIDが処理されました.")
     df.info()
 
@@ -113,13 +149,9 @@ def main():
     """
     複数のデータソースをIDベースでマージし, 単一のマスターデータを生成する.
     """
-    # 1. 設定の読み込み
     sources, final_columns_info = load_config(MAPPING_FILE)
-
-    # 2. マスターDataFrameの初期化
     master_df = pd.DataFrame()
 
-    # 3. 各データソースを処理し, マスターへマージ
     for i, source in enumerate(sources):
         filename = source.get("file", "N/A")
         print(f" - 処理中 ({i+1}/{len(sources)}): {filename}")
@@ -133,10 +165,8 @@ def main():
         if master_df.empty:
             master_df = temp_df
         else:
-            master_df.update(temp_df)
-            new_ids = temp_df.index.difference(master_df.index)
-            if not new_ids.empty:
-                master_df = pd.concat([master_df, temp_df.loc[new_ids]])
+            # 【重要】updateからcombine_firstへの修正（欠損値を互いに補完し、新規カラムもマージする）
+            master_df = temp_df.combine_first(master_df)
 
     finalize_and_save_data(master_df, final_columns_info, OUTPUT_FILE)
 

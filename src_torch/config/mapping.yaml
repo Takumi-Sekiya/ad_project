@@ -1,5 +1,5 @@
 # mapping.yaml
-# python src/create_structured_data.py
+# python src_torch/create_structured_data.py
 
 # 統一後のカラム名とデータ型の定義
 final_columns:
