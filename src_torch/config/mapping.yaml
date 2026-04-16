@@ -11,22 +11,24 @@ final_columns:
     type: numeric
     scale: true
     upper_percentile: 90
-    inverse: false
+    invert: False
   severity:
     type: numeric
     scale: true
     upper_percentile: 90
-    inverse: false
+    invert: False
   SUVR:
     type: numeric
   MMSE:
     type: numeric
     scale: true
-    inverse: true
+    upper_percentile: 90
+    invert: true
   HDSR:
     type: numeric
     scale: true
-    inverse: true
+    upper_percentile: 90
+    invert: true
   #ADAS:
   #  type: numeric
   CDR: 
