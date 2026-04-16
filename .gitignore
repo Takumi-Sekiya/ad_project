@@ -29,3 +29,6 @@ temp/
 
 # 分析用ノートブックファイル
 *.ipynb
+
+# 実験用ファイル
+*run_experiments.py
