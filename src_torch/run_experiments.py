@@ -10,10 +10,12 @@ def run_experiments():
     # 実験を行いたい部位（ROI）のリスト
     # マスクファイル名が w{subject}_mask-{ROI}.nii となることを想定
     roi_list = [
-        #'gray-matter',
-        #'frontal-lobe',
-        #'temporal-lobe'
-        'whole-hippocampus',
+        'gray-matter',
+        'frontal-lobe',
+        'parietal-lobe',
+        'occipital-lobe',
+        'temporal-lobe',
+        'subcortical-tissue',
     ]
 
     # 実験を行いたい出力指標（Target）のリスト
@@ -22,8 +24,9 @@ def run_experiments():
         #'HDSR',
         #'gm_atrophy',
         'scaled_MMSE',
-        #'scaled_HDSR',
-        #'scaled_gm_atrophy',
+        'scaled_HDSR',
+        'scaled_gm_atrophy',
+        'scaled_severity'
     ]
 
     # ベースとなるconfigファイルのパス
