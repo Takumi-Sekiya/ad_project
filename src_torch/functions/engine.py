@@ -90,7 +90,7 @@ def save_scatter_plot(y_true, y_pred, title, file_path):
     # 補助線の範囲をデータの最大値に合わせる
     max_val = max(y_true.max(), y_pred.max()) * 1.05
     min_val = min(y_true.min(), y_pred.min()) * 0.95
-    ax.plot([min_val, max_val], [min_val, max_val], c='black', linestyle='--')
+    ax.plot([min_val, max_val], [min_val, max_val], c='black')
     
     ax.set_xlabel("True")
     ax.set_ylabel("Predicted")
@@ -258,30 +258,46 @@ def run_training(model: nn.Module, train_ds, test_ds, config: dict):
     y_train_true_scaled, y_train_pred_scaled = get_predictions(DataLoader(train_ds, batch_size=config['training'].get('batch_size', 32)))
     y_test_true_scaled, y_test_pred_scaled = get_predictions(DataLoader(test_ds, batch_size=config['training'].get('batch_size', 32)))
 
-    # ★ 逆スケーリングの適用
     target_var = config['data']['target_variable']
     metadata_path = config['data'].get('metadata_path')
     
-    y_train_true = apply_inverse_scaling(y_train_true_scaled, target_var, metadata_path)
-    y_train_pred = apply_inverse_scaling(y_train_pred_scaled, target_var, metadata_path)
-    y_test_true = apply_inverse_scaling(y_test_true_scaled, target_var, metadata_path)
-    y_test_pred = apply_inverse_scaling(y_test_pred_scaled, target_var, metadata_path)
+    y_train_true_orig = apply_inverse_scaling(y_train_true_scaled, target_var, metadata_path)
+    y_train_pred_orig = apply_inverse_scaling(y_train_pred_scaled, target_var, metadata_path)
+    y_test_true_orig = apply_inverse_scaling(y_test_true_scaled, target_var, metadata_path)
+    y_test_pred_orig = apply_inverse_scaling(y_test_pred_scaled, target_var, metadata_path)
 
     # 6-3. 結果をExcelに保存
-    excel_path = os.path.join(output_dir, "predictions_original_scale.xlsx")
+    excel_path = os.path.join(output_dir, "predictions.xlsx")
+    
+    train_df = pd.DataFrame({
+        'subject_id': train_ds.subject_ids if train_ds.subject_ids is not None else np.nan,
+        'True_Scaled': y_train_true_scaled,
+        'Predicted_Scaled': y_train_pred_scaled,
+        'True_Original': y_train_true_orig,
+        'Predicted_Original': y_train_pred_orig
+    })
+
+    test_df = pd.DataFrame({
+        'subject_id': test_ds.subject_ids if test_ds.subject_ids is not None else np.nan,
+        'True_Scaled': y_test_true_scaled,
+        'Predicted_Scaled': y_test_pred_scaled,
+        'True_Original': y_test_true_orig,
+        'Predicted_Original': y_test_pred_orig
+    })
+
     with pd.ExcelWriter(excel_path) as writer:
-        pd.DataFrame({'True_Original': y_train_true, 'Predicted_Original': y_train_pred}).to_excel(writer, sheet_name='Train_Data', index=False)
-        pd.DataFrame({'True_Original': y_test_true, 'Predicted_Original': y_test_pred}).to_excel(writer, sheet_name='Test_Data', index=False)
+        train_df.to_excel(writer, sheet_name='Train_Data', index=False)
+        test_df.to_excel(writer, sheet_name='Test_Data', index=False)
     
     # 6-4. プロット図の生成と保存
-    train_fig = save_scatter_plot(y_train_true, y_train_pred, "Train Data Scatter Plot", os.path.join(output_dir, "train_scatter_plot.png"))
+    train_fig = save_scatter_plot(y_train_true_orig, y_train_pred_orig, "Train Data Scatter Plot", os.path.join(output_dir, "train_scatter_plot.png"))
     mlflow.log_figure(train_fig, "train_scatter_plot.png")
 
-    test_fig = save_scatter_plot(y_test_true, y_test_pred, "Test Data Scatter Plot", os.path.join(output_dir, "test_scatter_plot.png"))
+    test_fig = save_scatter_plot(y_test_true_orig, y_test_pred_orig, "Test Data Scatter Plot", os.path.join(output_dir, "test_scatter_plot.png"))
     mlflow.log_figure(test_fig, "test_scatter_plot.png")
 
     # 6-5. 最終指標の記録
-    rmse = np.sqrt(mean_squared_error(y_test_true, y_test_pred))
-    r2 = r2_score(y_test_true, y_test_pred)
+    rmse = np.sqrt(mean_squared_error(y_test_true_orig, y_test_pred_orig))
+    r2 = r2_score(y_test_true_orig, y_test_pred_orig)
     mlflow.log_metric("final_test_rmse", rmse)
     mlflow.log_metric("final_test_r2", r2)

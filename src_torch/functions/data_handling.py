@@ -102,9 +102,13 @@ def determine_target_canvas_size(df):
 def create_dataset(df, mode, target_columns, canvas_shape=None):
     images, features = [], []
     print(f"データセットを生成中 (モード: {mode})...")
+    cols_to_extract = target_columns.copy()
+    if 'subject_id' not in cols_to_extract:
+        cols_to_extract.insert(0, 'subject_id')
+
     for _, row in tqdm(df.iterrows(), total=len(df)):
         base_img = nib.load(row['base']).get_fdata().astype(np.float32)
-        mask_img = load_and_preprocess_mask(row['mask'], threshold=100)
+        mask_img = load_and_preprocess_mask(row['mask'], threshold=50)
         roi_array = base_img * (mask_img > 0.5)
 
         if mode == 'crop_and_pad':
@@ -119,7 +123,7 @@ def create_dataset(df, mode, target_columns, canvas_shape=None):
             raise ValueError(f"未知のROI処理モードです: {mode}")
         
         images.append(processed_img)
-        features.append(row[target_columns])
+        features.append(row[cols_to_extract])
 
     img_array = np.array(images)[..., np.newaxis]
     features_df = pd.DataFrame(features).reset_index(drop=True)
