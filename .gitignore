@@ -31,4 +31,4 @@ temp/
 *.ipynb
 
 # 実験用ファイル
-*run_experiments.py
+*/run_experiments.py
