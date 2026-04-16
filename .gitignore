@@ -31,4 +31,5 @@ temp/
 *.ipynb
 
 # 実験用ファイル
-*/run_experiments.py
+src_torch/run_experiments.py
+src/run_experiments.py
