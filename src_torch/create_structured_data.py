@@ -84,7 +84,7 @@ def process_source_file(source_info, raw_data_dir):
 
 def finalize_and_save_data(df, final_columns_info, output_path):
     """
-    最終的なDataFrameを整形、正規化（パーセンタイル対応）し、CSVとして保存する.
+    最終的なDataFrameを整形、正規化（上下限パーセンタイル対応）し、CSVとして保存する.
     """
     df.reset_index(inplace=True)
     df.rename(columns={'index': 'subject_id'}, inplace=True)
@@ -98,29 +98,32 @@ def finalize_and_save_data(df, final_columns_info, output_path):
 
             # スケーリングの処理
             if col_info.get("scale") is True:
-                min_val = df[col_name].min()
                 
-                # パーセンタイル設定の取得 (デフォルトは100 = 最大値)
+                # パーセンタイル設定の取得 (デフォルト: 下限=0, 上限=100)
+                lower_pct = col_info.get("lower_percentile", 0)
                 upper_pct = col_info.get("upper_percentile", 100)
-                if not (0 < upper_pct <= 100):
-                    print(f" - 警告: {col_name} の upper_percentile は 0 より大きく 100 以下の数値で指定してください. 100として扱います.")
-                    upper_pct = 100
                 
-                # 指定されたパーセンタイル値を計算 (100の場合は最大値と同じ)
+                # パラメータのバリデーション
+                if not (0 <= lower_pct < upper_pct <= 100):
+                    print(f" - 警告: {col_name} のパーセンタイル設定が不正です(lower={lower_pct}, upper={upper_pct}). デフォルト(0, 100)を使用します.")
+                    lower_pct, upper_pct = 0, 100
+                
+                # 指定されたパーセンタイルに基づく基準値を計算
+                min_ref_val = df[col_name].quantile(lower_pct / 100.0)
                 max_ref_val = df[col_name].quantile(upper_pct / 100.0)
                 
                 invert = col_info.get("invert", False)
                 scaled_col_name = f"scaled_{col_name}"
 
                 # 有効な分散がない場合のハンドリング
-                if pd.isna(min_val) or pd.isna(max_ref_val) or min_val == max_ref_val:
+                if pd.isna(min_ref_val) or pd.isna(max_ref_val) or min_ref_val == max_ref_val:
                     print(f" - 警告: カラム '{col_name}' は有効な分散がないため0埋めします.")
                     df[scaled_col_name] = 0.0
                 else:
-                    # 正規化計算
-                    df[scaled_col_name] = (df[col_name] - min_val) / (max_ref_val - min_val)
+                    # 正規化計算 (min_ref_val を基準とする)
+                    df[scaled_col_name] = (df[col_name] - min_ref_val) / (max_ref_val - min_ref_val)
                     
-                    # 1を超える値(外れ値)を1.0に、念のため0未満を0.0にクリッピング
+                    # 範囲外の値を 0.0 ~ 1.0 にクリッピング
                     df[scaled_col_name] = df[scaled_col_name].clip(lower=0.0, upper=1.0)
                     
                     # 反転処理
@@ -131,9 +134,11 @@ def finalize_and_save_data(df, final_columns_info, output_path):
                 scaling_metadata[col_name] = {
                     "original_column": col_name,
                     "scaled_column": scaled_col_name,
-                    "min": float(min_val) if not pd.isna(min_val) else None,
+                    "min_reference_value": float(min_ref_val) if not pd.isna(min_ref_val) else None,
                     "max_reference_value": float(max_ref_val) if not pd.isna(max_ref_val) else None,
+                    "lower_percentile_used": lower_pct,
                     "upper_percentile_used": upper_pct,
+                    "actual_min": float(df[col_name].min()) if not pd.isna(df[col_name].min()) else None,
                     "actual_max": float(df[col_name].max()) if not pd.isna(df[col_name].max()) else None,
                     "inverted": invert
                 }

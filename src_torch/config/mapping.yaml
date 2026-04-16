@@ -10,24 +10,26 @@ final_columns:
   gm_atrophy:
     type: numeric
     scale: true
-    upper_percentile: 90
+    upper_percentile: 95
     invert: False
   severity:
     type: numeric
     scale: true
-    upper_percentile: 90
+    upper_percentile: 95
     invert: False
   SUVR:
     type: numeric
   MMSE:
     type: numeric
     scale: true
-    upper_percentile: 90
+    lower_percentile: 3
+    upper_percentile: 100
     invert: true
   HDSR:
     type: numeric
     scale: true
-    upper_percentile: 90
+    lower_percentile: 3
+    upper_percentile: 100
     invert: true
   #ADAS:
   #  type: numeric

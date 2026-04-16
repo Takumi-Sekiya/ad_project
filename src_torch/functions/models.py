@@ -193,7 +193,7 @@ class RegulatedResNetBasicBlock(nn.Module):
         
         out = self.conv2(out)
         out = self.bn2(out)
-        out = F.relu(out)
+        #out = F.relu(out)
         
         # 修正前: out += self.shortcut(x)
         out = out + self.shortcut(x)  # ← 修正後（新しいテンソルとして計算する）
