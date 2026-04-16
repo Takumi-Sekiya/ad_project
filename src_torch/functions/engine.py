@@ -1,5 +1,6 @@
 import os
 import copy
+import json
 import mlflow
 import torch
 import torch.nn as nn
@@ -40,14 +41,59 @@ def create_optimizer(model, config: dict) -> torch.optim.Optimizer:
     
     return OptimizerClass(model.parameters(), **opt_params)
 
+def apply_inverse_scaling(values, target_variable, metadata_path):
+    """
+    scaling_metadata.json を使用して、スケーリングされた値を元のスケールに復元する。
+    """
+    if not metadata_path or not os.path.exists(metadata_path):
+        print(f" - 情報: メタデータが見つからないため、逆スケーリングはスキップされます。")
+        return values
+
+    try:
+        with open(metadata_path, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+        
+        # target_variable が 'scaled_' で始まる場合、元のカラム名を取得
+        base_col = target_variable.replace('scaled_', '')
+        
+        if base_col not in metadata:
+            print(f" - 情報: カラム '{base_col}' のスケーリング情報がメタデータにありません。")
+            return values
+        
+        info = metadata[base_col]
+        min_ref = info['min_reference_value']
+        max_ref = info['max_reference_value']
+        inverted = info.get('inverted', False)
+
+        if min_ref is None or max_ref is None:
+            return values
+
+        # 逆変換ロジック
+        rescaled_values = np.array(values, dtype=np.float32)
+        
+        if inverted:
+            rescaled_values = 1.0 - rescaled_values
+            
+        rescaled_values = rescaled_values * (max_ref - min_ref) + min_ref
+        return rescaled_values
+
+    except Exception as e:
+        print(f"警告: 逆スケーリング中にエラーが発生しました: {e}")
+        return values
+
 def save_scatter_plot(y_true, y_pred, title, file_path):
-    """散布図生成 (元の実装をそのまま維持)"""
+    """散布図生成 (軸ラベルに 'Original Scale' を明記)"""
     r2 = r2_score(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.scatter(y_true, y_pred, alpha=1, c='blue')
-    ax.plot([0, y_true.max()*1.05], [0, y_true.max()*1.05], c='black')
-    ax.set_xlabel("True Values")
-    ax.set_ylabel("Predicted Values")
+    ax.scatter(y_true, y_pred, alpha=0.6, c='blue')
+    
+    # 補助線の範囲をデータの最大値に合わせる
+    max_val = max(y_true.max(), y_pred.max()) * 1.05
+    min_val = min(y_true.min(), y_pred.min()) * 0.95
+    ax.plot([min_val, max_val], [min_val, max_val], c='black', linestyle='--')
+    
+    ax.set_xlabel("True")
+    ax.set_ylabel("Predicted")
     ax.set_title(f"{title}\n(R2 Score: {r2:.4f})")
     ax.grid(True)
     fig.tight_layout()
@@ -195,6 +241,7 @@ def run_training(model: nn.Module, train_ds, test_ds, config: dict):
 
     # 6-2. 予測の実行を関数化
     def get_predictions(loader):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model.eval()
         y_true, y_pred = [], []
         with torch.no_grad():
@@ -204,19 +251,27 @@ def run_training(model: nn.Module, train_ds, test_ds, config: dict):
                                     batch_data['numerical_input'].to(device))
                 else:
                     outputs = model(batch_data['img_input'].to(device))
-                # CPU上のnumpy配列に変換
                 y_pred.append(outputs.cpu().numpy())
-                y_true.append(targets.numpy())
+                y_true.append(targets.cpu().numpy())
         return np.concatenate(y_true).flatten(), np.concatenate(y_pred).flatten()
 
-    y_train_true, y_train_pred = get_predictions(train_loader)
-    y_test_true, y_test_pred = get_predictions(test_loader)
+    y_train_true_scaled, y_train_pred_scaled = get_predictions(DataLoader(train_ds, batch_size=config['training'].get('batch_size', 32)))
+    y_test_true_scaled, y_test_pred_scaled = get_predictions(DataLoader(test_ds, batch_size=config['training'].get('batch_size', 32)))
+
+    # ★ 逆スケーリングの適用
+    target_var = config['data']['target_variable']
+    metadata_path = config['data'].get('metadata_path')
+    
+    y_train_true = apply_inverse_scaling(y_train_true_scaled, target_var, metadata_path)
+    y_train_pred = apply_inverse_scaling(y_train_pred_scaled, target_var, metadata_path)
+    y_test_true = apply_inverse_scaling(y_test_true_scaled, target_var, metadata_path)
+    y_test_pred = apply_inverse_scaling(y_test_pred_scaled, target_var, metadata_path)
 
     # 6-3. 結果をExcelに保存
-    excel_path = os.path.join(output_dir, "predictions.xlsx")
+    excel_path = os.path.join(output_dir, "predictions_original_scale.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
-        pd.DataFrame({'True': y_train_true, 'Predicted': y_train_pred}).to_excel(writer, sheet_name='Train_Data', index=False)
-        pd.DataFrame({'True': y_test_true, 'Predicted': y_test_pred}).to_excel(writer, sheet_name='Test_Data', index=False)
+        pd.DataFrame({'True_Original': y_train_true, 'Predicted_Original': y_train_pred}).to_excel(writer, sheet_name='Train_Data', index=False)
+        pd.DataFrame({'True_Original': y_test_true, 'Predicted_Original': y_test_pred}).to_excel(writer, sheet_name='Test_Data', index=False)
     
     # 6-4. プロット図の生成と保存
     train_fig = save_scatter_plot(y_train_true, y_train_pred, "Train Data Scatter Plot", os.path.join(output_dir, "train_scatter_plot.png"))

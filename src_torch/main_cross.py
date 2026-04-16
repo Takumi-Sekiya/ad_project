@@ -106,6 +106,10 @@ def run_cross_validation(img_all, features_all, config: dict, base_dir: Path):
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=config['training']['random_state'])
     
     gen_cfg = config['dataset_generation']
+    csv_path = base_dir / gen_cfg['clinical_csv_path']
+    metadata_path = csv_path.parent / "scaling_metadata.json"
+    config['data']['metadata_path'] = str(metadata_path)
+
     output_dir = base_dir / gen_cfg['output_dir']
     output_dir.mkdir(parents=True, exist_ok=True)
 
