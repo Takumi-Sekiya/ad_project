@@ -29,37 +29,51 @@ def calculate_optimal_shift(heat_map_image, mask_image):
     
     return best_shift
 
-def calculate_importance_score(heat_map, mask_image, best_idx):
+def calculate_mean_activation_score(heat_map, mask_image, best_idx, threshold=0.5):
+    """
+    【旧 standard】
+    ROI（対象領域）内で、かつ閾値を超えたヒートマップ画素値の単純平均
+    """
     dx, dy, dz = best_idx
     sx, sy, sz = mask_image.shape
     heat_patch = heat_map[dx:dx+sx, dy:dy+sy, dz:dz+sz]
     
-    binary_heat_patch = np.where(heat_patch >= 0.5, 1.0, 0.0) * mask_image
-    heat_patch = heat_patch * binary_heat_patch
+    masked_heat = heat_patch * mask_image
+    valid_pixels = (masked_heat > threshold).astype(np.float32)
+    
+    val_sum = np.sum(masked_heat * valid_pixels)
+    count = np.sum(valid_pixels)
+    return val_sum / (count + 1e-8)
 
-    dot = np.sum(heat_patch)
-    mask_sum = np.sum(binary_heat_patch)
-    return dot / (mask_sum + 1e-8)
-
-def calculate_recall_importance_score(heat_map, mask_image, best_idx, threshold=0.5):
+def calculate_precision_score(heat_map, mask_image, best_idx, threshold=0.5):
+    """
+    【旧 recall】
+    ヒートマップの閾値以上の領域全体のうち、ROI領域と重なっている割合
+    """
     dx, dy, dz = best_idx
     sx, sy, sz = mask_image.shape
+    
     binary_heat_map = (heat_map > threshold).astype(np.float32)
     heat_patch = binary_heat_map[dx:dx+sx, dy:dy+sy, dz:dz+sz]
 
-    dot = np.sum(heat_patch * mask_image)
-    binary_sum = np.sum(binary_heat_map)
-    return dot / (binary_sum + 1e-8)
+    intersection = np.sum(heat_patch * mask_image)
+    predicted_positive = np.sum(binary_heat_map)
+    return intersection / (predicted_positive + 1e-8)
 
-def calculate_threshold_importance_score(heat_map, mask_image, best_idx, threshold=0.7):
+def calculate_coverage_score(heat_map, mask_image, best_idx, threshold=0.7):
+    """
+    【旧 threshold】
+    ROI領域全体のうち、ヒートマップの閾値以上の領域でカバーされている割合
+    """
     dx, dy, dz = best_idx
     sx, sy, sz = mask_image.shape
+    
     binary_heat_map = (heat_map > threshold).astype(np.float32)
     heat_patch = binary_heat_map[dx:dx+sx, dy:dy+sy, dz:dz+sz]
 
-    dot = np.sum(heat_patch * mask_image)
-    binary_sum = np.sum(mask_image)
-    return dot / (binary_sum + 1e-8)
+    intersection = np.sum(heat_patch * mask_image)
+    actual_positive = np.sum(mask_image)
+    return intersection / (actual_positive + 1e-8)
 
 def process_subject_roi(args):
     """マルチプロセス用のラッパー関数: 1人の被験者の全サブROIスコアを計算"""
@@ -74,12 +88,12 @@ def process_subject_roi(args):
             optimal_shift = calculate_optimal_shift(heat_map_image, mask_image)
             
             # スコアタイプの分岐
-            if score_type == 'standard':
-                score = calculate_importance_score(heat_map_image, mask_image, optimal_shift)
-            elif score_type == 'recall':
-                score = calculate_recall_importance_score(heat_map_image, mask_image, optimal_shift, config_thresholds['recall_score'])
-            elif score_type == 'threshold':
-                score = calculate_threshold_importance_score(heat_map_image, mask_image, optimal_shift, config_thresholds['threshold_score'])
+            if score_type == 'mean_activation':
+                score = calculate_mean_activation_score(heat_map_image, mask_image, optimal_shift, config_thresholds['mean_activation'])
+            elif score_type == 'precision':
+                score = calculate_precision_score(heat_map_image, mask_image, optimal_shift, config_thresholds['precision'])
+            elif score_type == 'coverage':
+                score = calculate_coverage_score(heat_map_image, mask_image, optimal_shift, config_thresholds['coverage'])
             else:
                 score = np.nan
                 
