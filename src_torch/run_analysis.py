@@ -37,10 +37,12 @@ def find_subjects(raw_data_dir, prefixes):
 def find_subjects_from_cross_validation(config, cross_num):
     base_dir = Path.home() / "ad_project"
     mapping_path = base_dir / config['paths']['testdata_mapping_path'].format(
-        target_metric_name=config['analysis']['target_metric_name']
+        input_region=config['analysis']['input_region'],
+        target_metric_name=config['analysis']['target_metric_name'],
+        cross_num=cross_num
     )
     
-    df = pd.read_excel(mapping_path, sheet_name=f"Test_Data_Fold_{cross_num+1}")
+    df = pd.read_excel(mapping_path)
     subject_ids = df['subject_id'].tolist()
     
     return subject_ids
@@ -131,7 +133,8 @@ def main(config, sub_id, cross_num=0):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='src/config/analysis_settings.yaml')
+    parser.add_argument('--config', type=str, default='src_torch/config/analysis_settings.yaml')
+    parser.add_argument('--workers', type=int, default=None, help='Number of parallel processes')
     args = parser.parse_args()
 
     print(f"Loading config: {args.config}")
