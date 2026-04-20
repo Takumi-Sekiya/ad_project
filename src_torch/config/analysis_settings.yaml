@@ -1,5 +1,5 @@
 # analysis_settings.yaml
-# python src_torch/run_analysis.py --config src_torch/config/analysis_settings.yaml
+# python src_torch/run_analysis.py --config src_torch/config/analysis_settings.yaml --workers 10
 
 # パスはすべてad_projectディレクトリを基準とした相対パスで指定
 paths:
@@ -29,7 +29,7 @@ model:
 analysis:
   # 解析対象
   input_region: "gray-matter"
-  target_metric_name: "scaled_gm_atrophy"  # "gm_atrophy", "MMSE", "HDSR"
+  target_metric_name: "scaled_HDSR"  # "scaled_gm_atrophy", "scaled_MMSE", "scaled_HDSR"
 
   # スコアの寄与方向
   score_mode: "increase"

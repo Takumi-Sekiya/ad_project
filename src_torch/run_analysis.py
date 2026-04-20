@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import torch
+import concurrent.futures
+import multiprocessing
 
 from functions.explainability_utils import (
     get_canvas_shape_from_pickle,
@@ -14,6 +16,17 @@ from functions.explainability_utils import (
     save_nifti
 )
 from functions.models import build_model
+
+def process_task(task_args):
+    config, sub_id, cross_num = task_args
+    try:
+        # PyTorch内部のマルチスレッドと競合するのを防ぐため、スレッド数を1に制限
+        torch.set_num_threads(2) 
+        
+        main(config=config, sub_id=sub_id, cross_num=cross_num)
+        return f"[SUCCESS] Processed {sub_id} in fold {cross_num}"
+    except Exception as e:
+        return f"[ERROR] Failed {sub_id} in fold {cross_num}: {e}"
 
 def find_subjects(raw_data_dir, prefixes):
     subject_ids = set()
@@ -141,11 +154,23 @@ if __name__ == "__main__":
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
 
+    # 1. 実行すべき全タスクのリスト（引数のタプル）を作成
+    tasks = []
     for i in range(5):
         sub_ids = find_subjects_from_cross_validation(config, cross_num=i)
         for sub_id in sub_ids:
-            try:
-                main(config=config, sub_id=sub_id, cross_num=i)
-            except Exception as e:
-                print(f"Error processing {sub_id} in fold {i}: {e}")
-                continue
+            tasks.append((config, sub_id, i))
+
+    # 2. ワーカー数（同時実行数）の決定
+    # 指定がない場合は、論理コア数から少し余裕を持たせた数にする（OSフリーズ防止）
+    max_workers = args.workers or max(1, multiprocessing.cpu_count() - 2)
+    print(f"Starting parallel processing with {max_workers} processes. Total tasks: {len(tasks)}")
+
+    # 3. マルチプロセスでの実行
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # executor.map でタスクリストを各プロセスに割り当てる
+        results = executor.map(process_task, tasks)
+        
+        # 結果の出力
+        for result in results:
+            print(result)
