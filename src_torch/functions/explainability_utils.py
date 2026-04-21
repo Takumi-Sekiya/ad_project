@@ -1,4 +1,5 @@
 # explainability_utils.py
+import json
 import pickle
 import numpy as np
 import nibabel as nib
@@ -13,24 +14,22 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 # 1. image_preprocessing.py のロジック (完全再現)
 # ==========================================
 
-def crop_roi(roi_array):
-    if np.all(roi_array == 0):
-        return np.zeros((1, 1, 1), dtype=roi_array.dtype)
-    indeces = np.array(np.where(roi_array != 0))
-    min_coords = indeces.min(axis=1)
-    max_coords = indeces.max(axis=1)
-    return roi_array[min_coords[0]:max_coords[0]+1,
-                     min_coords[1]:max_coords[1]+1,
-                     min_coords[2]:max_coords[2]+1]
+def load_and_preprocess_mask(mask_path, threshold=50):
+    """data_handling.py と完全に同一のマスク前処理関数"""
+    mask_nii = nib.load(mask_path)
+    mask_data = mask_nii.get_fdata().astype(np.float32)
+    
+    # 0-255などのスケールの場合、閾値以上を1.0にする
+    if mask_data.max() > 1.0:
+        mask_data = np.where(mask_data >= threshold, 1.0, 0.0)
+        
+    return mask_data
 
-def pad_to_canvas(cropped_array, canvas_shape):
-    canvas = np.zeros(canvas_shape, dtype=cropped_array.dtype)
-    start_coords = [(cs - da) // 2 for cs, da in zip(canvas_shape, cropped_array.shape)]
-    end_coords = [sc + da for sc, da in zip(start_coords, cropped_array.shape)]
-    canvas[start_coords[0]:end_coords[0],
-              start_coords[1]:end_coords[1],
-              start_coords[2]:end_coords[2]] = cropped_array
-    return canvas
+def crop_by_ranges(array, ranges):
+    """JSONから取得した絶対座標で画像を切り出す"""
+    return array[ranges[0][0]:ranges[0][1],
+                 ranges[1][0]:ranges[1][1],
+                 ranges[2][0]:ranges[2][1]]
 
 def normalize_intensity(array):
     min_val, max_val = array.min(), array.max()
@@ -38,10 +37,39 @@ def normalize_intensity(array):
         return (array - min_val) / (max_val - min_val)
     return array
 
+def load_crop_metadata(json_path, roi_name):
+    """JSONファイルから対象ROIの切り出し座標とキャンバスサイズを取得する"""
+    print(f"Loading crop metadata from: {json_path}")
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        
+    if roi_name not in data:
+        raise ValueError(f"ROI '{roi_name}' のデータがJSONに見つかりません。")
+        
+    ranges_dict = data[roi_name]['crop_ranges']
+    ranges = [ranges_dict['x'], ranges_dict['y'], ranges_dict['z']]
+    target_shape = tuple(data[roi_name]['target_shape'])
+    
+    return ranges, target_shape
+
+def generate_model_input_reproduction(base_path, mask_path, crop_ranges):
+    """固定座標と、学習時と同一のマスク前処理を用いて入力テンソルを再現する"""
+    base_nii = nib.load(base_path)
+    base_data = base_nii.get_fdata().astype(np.float32)
+    
+    mask_data = load_and_preprocess_mask(mask_path, threshold=50)
+    
+    roi_array = base_data * (mask_data > 0.5)
+    
+    processed_img = crop_by_ranges(roi_array, crop_ranges)
+    processed_img = normalize_intensity(processed_img)
+        
+    return processed_img
+
 # ==========================================
 # 2. データロード & 処理用ユーティリティ
 # ==========================================
-
+"""
 def get_canvas_shape_from_pickle(pickle_path):
     print(f"Loading pickle to determine canvas size: {pickle_path}")
     pickle_path = Path(pickle_path)
@@ -81,7 +109,7 @@ def generate_model_input_reproduction(base_path, mask_path, canvas_shape):
     processed_img = normalize_intensity(padded)
         
     return processed_img
-
+"""
 # ==========================================
 # 3. Grad-CAMロジック (PyTorch移行)
 # ==========================================
@@ -120,22 +148,22 @@ def load_exported_model_weights(model_instance, model_path):
     return model_instance
 
 def get_target_layer(model, layer_name):
-    """文字列で指定されたターゲットレイヤーをPyTorchモデルから取得する簡易関数"""
-    # 例: 'layer4' -> model.layer4 など。設定に応じて調整が必要です。
-    # Noneが渡された場合は、最後の畳み込み層を推測して返すようにします。
+    """文字列で指定されたターゲットレイヤーをPyTorchモデルから取得する"""
     if layer_name is None:
-        # Simple3DCNN や Multimodal の場合
-        if hasattr(model, 'conv5'):
-            return [model.conv5[-2]] # -1はPoolingなのでその前のConvを狙う
-        # ResNet の場合
-        elif hasattr(model, 'layer8'):
-            return [model.layer8.conv2]
+        if hasattr(model, 'layer8'):
+            # ResNet3D の場合: 最後のブロック全体
+            return [model.layer8]
         elif hasattr(model, 'layer6'):
-            return [model.layer6.conv2]
+            # RegulatedResNet3D の場合: 最後のブロック全体
+            return [model.layer6]
+        elif hasattr(model, 'conv5'):
+            # Simple3DCNN / Multimodal3DCNN の場合: 
+            # conv5は Sequential(Conv3d, ReLU, Pool) なので、空間解像度が潰れる前の Conv3d [0] を狙う
+            return [model.conv5[0]]
         else:
-            raise ValueError("Could not automatically determine target layer. Please specify explicitly.")
+            raise ValueError("Could not automatically determine target layer.")
     else:
-        # getattrなどで取得するロジック（必要に応じて実装）
+        # 'layer6' のように文字列で直接指定された場合
         return [getattr(model, layer_name)]
 
 def compute_3d_gradcam(model, img_array, numerical_array=None, score_mode='increase', target_layer_name=None):

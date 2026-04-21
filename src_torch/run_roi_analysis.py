@@ -1,4 +1,6 @@
+# run_roi_analysis.py
 import os
+import json
 import yaml
 import argparse
 import numpy as np
@@ -22,6 +24,11 @@ def main(config):
     analysis_base = base_dir / config['paths']['analysis_base_dir']
     processed_base = base_dir / config['paths']['processed_data_dir']
     
+    # 1. JSONからメタデータを読み込む
+    json_path = base_dir / "ad_project/data/processed/crop_metadata.json"
+    with open(json_path, 'r', encoding='utf-8') as f:
+        crop_metadata = json.load(f)
+    
     input_rois = config['analysis']['input_rois']
     target_metrics = config['analysis']['target_metrics']
     score_types = config['analysis']['score_types']
@@ -29,15 +36,20 @@ def main(config):
     rois_mapping = config['rois_mapping']
     thresholds = config['analysis']['thresholds']
 
-    anomaly_threshold = thresholds.get('shift_anomaly_dist', 10.0)
-    
-    # マルチプロセスのワーカ数設定
-    max_workers = min(10, multiprocessing.cpu_count() - 2)
+    max_workers = min(20, multiprocessing.cpu_count() - 2)
     
     for input_roi in input_rois:
         sub_rois = rois_mapping.get(input_roi, [])
         if not sub_rois:
             continue
+            
+        # JSONから対象となるメインROIの切り出し座標を取得
+        if input_roi not in crop_metadata:
+            print(f"Error: {input_roi} not found in metadata JSON.")
+            continue
+            
+        ranges_dict = crop_metadata[input_roi]['crop_ranges']
+        crop_ranges = [ranges_dict['x'], ranges_dict['y'], ranges_dict['z']]
             
         for target_metric in target_metrics:
             analysis_dir_name = config['paths']['analysis_dir_template'].format(
@@ -60,54 +72,28 @@ def main(config):
                     if not cross_dir.exists():
                         continue
                         
-                    # 当該Foldに存在する被験者IDを取得
                     cross_ids = [d.name for d in cross_dir.iterdir() if d.is_dir()]
                     
-                    # マルチプロセス用のタスクリスト作成
                     tasks = []
                     for sub_id in cross_ids:
                         heat_map_path = cross_dir / sub_id / "gradcam_masked.nii"
                         args = (
                             sub_id, heat_map_path, processed_base, 
                             sub_rois, config['paths']['mask_template'], 
-                            score_type, thresholds
+                            score_type, thresholds, crop_ranges
                         )
                         tasks.append(args)
 
-                    # 並列処理の実行
                     df = pd.DataFrame(columns=sub_rois, index=cross_ids)
-                    all_shifts = {sub_roi: {} for sub_roi in sub_rois}
 
                     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
                         results = executor.map(process_subject_roi, tasks)
-                        for sub_id, scores, shifts in results:
+                        for sub_id, scores, _ in results: 
                             df.loc[sub_id] = scores
 
-                            for sub_roi, shift in shifts.items():
-                                if shift is not None:
-                                    all_shifts[sub_roi][sub_id] = shift
-
-                    for sub_roi in sub_rois:
-                        roi_shifts = all_shifts[sub_roi]
-                        if not roi_shifts:
-                            continue
-                        
-                        # 全被験者のシフト量の「中央値(Median)」を算出（外れ値に引っ張られないため）
-                        shifts_array = np.array(list(roi_shifts.values()))
-                        median_shift = np.median(shifts_array, axis=0)
-                        
-                        # 中央値から大きく外れている被験者を検知
-                        for sub_id, shift in roi_shifts.items():
-                            dist = np.linalg.norm(np.array(shift) - median_shift)
-                            if dist > anomaly_threshold:
-                                print(f"[WARNING] Anomaly in Fold {cross_num+1} | {sub_id} ({sub_roi}): "
-                                      f"Distance={dist:.1f} voxels. "
-                                      f"Shift={shift}, Median={tuple(np.round(median_shift, 1))}")
-                            
                     df = df.astype(float)
                     importance_dfs.append(df)
                     
-                    # Foldごとのグラフ保存
                     mean_dict = df.mean(skipna=True).to_dict()
                     plt.figure(figsize=(8, 8))
                     plt.bar(list(mean_dict.keys()), list(mean_dict.values()), color='skyblue')
@@ -117,7 +103,6 @@ def main(config):
                     plt.savefig(analysis_dir / f"{score_prefix}importance_scores_fold_{cross_num+1}.png")
                     plt.close()
 
-                # Excelへ全Foldのデータを書き出し
                 if not importance_dfs:
                     continue
                     
@@ -126,7 +111,6 @@ def main(config):
                     for cross_num, df in enumerate(importance_dfs):
                         df.to_excel(writer, sheet_name=f'Test_Data_Fold_{cross_num+1}', index=True)
 
-                # 全Foldの平均 (Overall Mean) を計算して追記
                 score_mean_df = pd.DataFrame(columns=sub_rois)
                 for cross_num, df in enumerate(importance_dfs):
                     mean_dict = df.replace(0, np.nan).mean(skipna=True).to_dict()
@@ -138,7 +122,6 @@ def main(config):
                 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
                     score_mean_df.to_excel(writer, sheet_name='Overall_Mean', index=True)
 
-                # Overall Mean のグラフ保存
                 plt.figure(figsize=(8, 8))
                 plt.bar(list(overall_mean_dict.keys()), list(overall_mean_dict.values()), color='skyblue')
                 plt.xticks(rotation=45)

@@ -9,7 +9,7 @@ import concurrent.futures
 import multiprocessing
 
 from functions.explainability_utils import (
-    get_canvas_shape_from_pickle,
+    load_crop_metadata,
     generate_model_input_reproduction,
     load_exported_model_weights,
     compute_3d_gradcam,
@@ -27,25 +27,6 @@ def process_task(task_args):
         return f"[SUCCESS] Processed {sub_id} in fold {cross_num}"
     except Exception as e:
         return f"[ERROR] Failed {sub_id} in fold {cross_num}: {e}"
-
-def find_subjects(raw_data_dir, prefixes):
-    subject_ids = set()
-    for prefix in prefixes:
-        for path in raw_data_dir.glob(prefix):
-            if path.is_dir():
-                subject_ids.add(path.name)
-    
-    subject_ids.discard(".")
-    subject_ids.discard("..")
-
-    subject_ids = sorted(list(subject_ids))
-
-    # 特定の被験者を除外 (元のロジック維持)
-    for remove_id in ["AMC_SIK_0019_77_0_1", "AMC_SIK_0021_89_0_1", "AMC_SIK_0044_78_1_1", "AMC_SIK_0044_79_1_3"]:
-        if remove_id in subject_ids:
-            subject_ids.remove(remove_id)
-            
-    return subject_ids
 
 def find_subjects_from_cross_validation(config, cross_num):
     base_dir = Path.home() / "ad_project"
@@ -74,22 +55,19 @@ def main(config, sub_id, cross_num=0):
     )
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. キャンバスサイズ取得
-    pickle_path = base_dir / config['paths']['dataset_pickle_path'].format(
-        input_region=input_region,
-        target_metric_name=target_metric_name
-    )
-    canvas_shape = get_canvas_shape_from_pickle(pickle_path)
+    # 1. JSONファイルから共通座標とキャンバスサイズを取得
+    json_path = base_dir / "data/processed/crop_metadata.json" 
+    crop_ranges, canvas_shape = load_crop_metadata(json_path, input_region)
     
-    # 2. 画像生成
-    print("Generating model input using reproduced preprocessing logic...")
+    # 2. 画像生成 (固定座標を使用)
+    print("Generating model input using fixed coordinates...")
     base_image_path = base_dir / config['paths']['base_image_path'].format(subject=sub_id)
     mask_image_path = base_dir / config['paths']['mask_image_path'].format(subject=sub_id, input_region=input_region)
 
     img_input = generate_model_input_reproduction(
         base_path=base_image_path,
         mask_path=mask_image_path,
-        canvas_shape=canvas_shape
+        crop_ranges=crop_ranges
     )
     print(f"Generated input image shape: {img_input.shape}")
 
@@ -103,13 +81,10 @@ def main(config, sub_id, cross_num=0):
         target_metric_name=target_metric_name,
         cross_num=cross_num
     )
-    # 拡張子を.kerasから.pthに変更したことを想定
     model_path = os.path.join(model_dir, "model.pth") 
     
-    # 画像の入力形状 (in_channels=1 を先頭にするPyTorch仕様)
-    input_shape = (1,) + canvas_shape
+    input_shape = (1,) + tuple(canvas_shape)
     
-    # base_configを読み込んでモデルをインスタンス化
     base_config_path = base_dir / 'src' / 'config' / 'config.yaml'
     with open(base_config_path, 'r') as f:
         base_config = yaml.safe_load(f)
@@ -120,7 +95,6 @@ def main(config, sub_id, cross_num=0):
     # 4. Grad-CAM実行
     mode = config['analysis']['score_mode']
     print(f"Running Grad-CAM for {target_metric_name} ({mode})...")
-    
     target_layer_name = config['model'].get('target_layer', None)
     
     heatmap = compute_3d_gradcam(
@@ -131,18 +105,13 @@ def main(config, sub_id, cross_num=0):
     )
 
     # 5. ヒートマップ保存
-    heatmap_save_path = os.path.join(output_dir, f"gradcam.nii")
+    heatmap_save_path = os.path.join(output_dir, "gradcam.nii")
     save_nifti(heatmap, heatmap_save_path)
 
     mask = img_input > 1e-5
     masked_heatmap = heatmap * mask
-    masked_heatmap_save_path = os.path.join(output_dir, f"gradcam_masked.nii")
+    masked_heatmap_save_path = os.path.join(output_dir, "gradcam_masked.nii")
     save_nifti(masked_heatmap, masked_heatmap_save_path)
-
-    print("\n=== プロトタイプ作成完了 ===")
-    print(f"処理モード: {mode} (increase=正の寄与, decrease=負の寄与)")
-    print(f"1. 入力画像 (Background): {input_save_path}")
-    print(f"2. ヒートマップ (Overlay): {heatmap_save_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -154,23 +123,16 @@ if __name__ == "__main__":
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
 
-    # 1. 実行すべき全タスクのリスト（引数のタプル）を作成
     tasks = []
     for i in range(5):
         sub_ids = find_subjects_from_cross_validation(config, cross_num=i)
         for sub_id in sub_ids:
             tasks.append((config, sub_id, i))
 
-    # 2. ワーカー数（同時実行数）の決定
-    # 指定がない場合は、論理コア数から少し余裕を持たせた数にする（OSフリーズ防止）
     max_workers = args.workers or max(1, multiprocessing.cpu_count() - 2)
     print(f"Starting parallel processing with {max_workers} processes. Total tasks: {len(tasks)}")
 
-    # 3. マルチプロセスでの実行
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # executor.map でタスクリストを各プロセスに割り当てる
         results = executor.map(process_task, tasks)
-        
-        # 結果の出力
         for result in results:
             print(result)

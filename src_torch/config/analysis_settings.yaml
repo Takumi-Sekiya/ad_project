@@ -28,8 +28,8 @@ model:
 
 analysis:
   # 解析対象
-  input_region: "gray-matter"
-  target_metric_name: "scaled_HDSR"  # "scaled_gm_atrophy", "scaled_MMSE", "scaled_HDSR"
+  input_region: "frontal-lobe"  # "gray-matter", "frontal-lobe", "parietal-lobe", "temporal-lobe", "occipital-lobe", "subcortical-tissue", "whole-hippocampus"
+  target_metric_name: "scaled_gm_atrophy"  # "scaled_gm_atrophy", "scaled_MMSE", "scaled_HDSR"
 
   # スコアの寄与方向
   score_mode: "increase"
