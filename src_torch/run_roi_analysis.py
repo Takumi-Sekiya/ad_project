@@ -76,11 +76,14 @@ def main(config):
                     
                     tasks = []
                     for sub_id in cross_ids:
-                        heat_map_path = cross_dir / sub_id / "gradcam_masked.nii"
+                        out_subject_dir = cross_dir / sub_id
+                        heat_map_path = out_subject_dir / "gradcam_masked.nii"
+                        
                         args = (
                             sub_id, heat_map_path, processed_base, 
                             sub_rois, config['paths']['mask_template'], 
-                            score_type, thresholds, crop_ranges
+                            score_type, thresholds, crop_ranges,
+                            out_subject_dir # ★ 追加: 保存先のディレクトリを渡す
                         )
                         tasks.append(args)
 
