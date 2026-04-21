@@ -66,14 +66,14 @@ def process_subject_roi(args):
             # ---------------------------------------------------------
             # クロップされたサブROIマスクをNIfTIとして保存
             # 保存しないのであればここをコメントアウト
-            #"""---------------------------------------------------------
+            """---------------------------------------------------------
             mask_save_path = save_dir / f"{sub_roi}_mask.nii"
             
             # 別のスコアタイプ（precision等）の計算時に既に保存されていればスキップしてI/Oを節約
             if not mask_save_path.exists():
                 affine = np.eye(4) # 位置情報はリセット(必要に応じて元画像のaffineを引き継いでもOK)
                 nib.save(nib.Nifti1Image(mask_image, affine), mask_save_path)
-            #---------------------------------------------------------"""
+            ---------------------------------------------------------"""
             
             if score_type == 'mean_activation':
                 score = calculate_mean_activation_score(heat_map_image, mask_image, config_thresholds['mean_activation'])
