@@ -23,10 +23,8 @@ def load_images(heat_map_path, mask_image_path, threshold=100):
 
 def calculate_optimal_shift(heat_map_image, mask_image):
     heat_binary = np.where(heat_map_image > 0, 1.0, 0.0)
-    # Use scipy.signal.correlate for efficient cross-correlation
     correlation = correlate(heat_binary, mask_image, mode='valid')
     best_shift = np.unravel_index(np.argmax(correlation), correlation.shape)
-    
     return best_shift
 
 def calculate_mean_activation_score(heat_map, mask_image, best_idx, threshold=0.5):
@@ -79,6 +77,7 @@ def process_subject_roi(args):
     """マルチプロセス用のラッパー関数: 1人の被験者の全サブROIスコアを計算"""
     sub_id, heat_map_path, mask_dir, sub_rois, mask_template, score_type, config_thresholds = args
     importance_scores = {}
+    optimal_shifts = {}
     
     for sub_roi in sub_rois:
         mask_image_path = mask_dir / mask_template.format(sub_id=sub_id, sub_roi=sub_roi)
@@ -86,6 +85,7 @@ def process_subject_roi(args):
         try:
             heat_map_image, mask_image = load_images(heat_map_path, mask_image_path, config_thresholds['mask_binarize'])
             optimal_shift = calculate_optimal_shift(heat_map_image, mask_image)
+            optimal_shifts[sub_roi] = optimal_shift
             
             # スコアタイプの分岐
             if score_type == 'mean_activation':
@@ -99,7 +99,7 @@ def process_subject_roi(args):
                 
             importance_scores[sub_roi] = score
         except Exception as e:
-            # エラー発生時はNaNを設定（Notebookの動きを再現）
             importance_scores[sub_roi] = np.nan
+            optimal_shifts[sub_roi] = None  # エラー時はNone
             
-    return sub_id, importance_scores
+    return sub_id, importance_scores, optimal_shifts

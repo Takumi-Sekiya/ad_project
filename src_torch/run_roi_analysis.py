@@ -28,6 +28,8 @@ def main(config):
     folds = config['analysis']['cross_validation_folds']
     rois_mapping = config['rois_mapping']
     thresholds = config['analysis']['thresholds']
+
+    anomaly_threshold = thresholds.get('shift_anomaly_dist', 10.0)
     
     # マルチプロセスのワーカ数設定
     max_workers = min(10, multiprocessing.cpu_count() - 2)
@@ -74,10 +76,33 @@ def main(config):
 
                     # 並列処理の実行
                     df = pd.DataFrame(columns=sub_rois, index=cross_ids)
+                    all_shifts = {sub_roi: {} for sub_roi in sub_rois}
+
                     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
                         results = executor.map(process_subject_roi, tasks)
-                        for sub_id, scores in results:
+                        for sub_id, scores, shifts in results:
                             df.loc[sub_id] = scores
+
+                            for sub_roi, shift in shifts.items():
+                                if shift is not None:
+                                    all_shifts[sub_roi][sub_id] = shift
+
+                    for sub_roi in sub_rois:
+                        roi_shifts = all_shifts[sub_roi]
+                        if not roi_shifts:
+                            continue
+                        
+                        # 全被験者のシフト量の「中央値(Median)」を算出（外れ値に引っ張られないため）
+                        shifts_array = np.array(list(roi_shifts.values()))
+                        median_shift = np.median(shifts_array, axis=0)
+                        
+                        # 中央値から大きく外れている被験者を検知
+                        for sub_id, shift in roi_shifts.items():
+                            dist = np.linalg.norm(np.array(shift) - median_shift)
+                            if dist > anomaly_threshold:
+                                print(f"[WARNING] Anomaly in Fold {cross_num+1} | {sub_id} ({sub_roi}): "
+                                      f"Distance={dist:.1f} voxels. "
+                                      f"Shift={shift}, Median={tuple(np.round(median_shift, 1))}")
                             
                     df = df.astype(float)
                     importance_dfs.append(df)
