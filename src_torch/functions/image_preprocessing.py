@@ -25,6 +25,26 @@ def pad_to_canvas(cropped_array, canvas_shape):
               start_coords[2]:end_coords[2]] = cropped_array
     return canvas
 
+def get_non_zero_bounds(roi_array):
+    """
+    非ゼロ領域（マスク）の最小・最大インデックスを取得する
+    """
+    if np.all(roi_array == 0):
+        return None, None
+    indices = np.array(np.where(roi_array != 0))
+    # (min_x, min_y, min_z), (max_x, max_y, max_z) の形式で返す
+    return indices.min(axis=1), indices.max(axis=1)
+
+def crop_by_ranges(array, ranges):
+    """
+    指定された固定座標 (ranges) に従って画像を切り出す
+    ranges: [[min_x, max_x], [min_y, max_y], [min_z, max_z]]
+    ※ max はスライス用に既に +1 された排他的(exclusive)な値であることを前提とする
+    """
+    return array[ranges[0][0]:ranges[0][1],
+                 ranges[1][0]:ranges[1][1],
+                 ranges[2][0]:ranges[2][1]]
+
 def normalize_intensity(array):
     """
     画像の輝度値から[0, 1]の範囲に正規化する

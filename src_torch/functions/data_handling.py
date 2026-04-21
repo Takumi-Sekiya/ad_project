@@ -1,23 +1,21 @@
 import os
+import json
 import pandas as pd
 import numpy as np
 import nibabel as nib
 import math
 from tqdm import tqdm
 
-from .image_preprocessing import crop_roi, pad_to_canvas, normalize_intensity
+from .image_preprocessing import get_non_zero_bounds, crop_by_ranges, normalize_intensity
 
 def load_and_preprocess_mask(mask_path, threshold=100):
     """
     マスク画像を読み込み、必要に応じて2値化(0 or 1)するヘルパー関数
     """
-    # 画像読み込み
     mask_nii = nib.load(mask_path)
     mask_data = mask_nii.get_fdata().astype(np.float32)
 
-    # 提案されたロジック: 最大値が1より大きい場合（0-255スケールと判断）
     if mask_data.max() > 1.0:
-        # 閾値以上を1, 未満を0に変換
         mask_data = np.where(mask_data >= threshold, 1.0, 0.0)
     
     return mask_data
@@ -84,22 +82,89 @@ def load_and_match_data(data_dir, csv_path, path_templates, target_columns, allo
     print("\nマッチング完了.")
     return pd.DataFrame(file_data)
 
-def determine_target_canvas_size(df):
-    cropped_shapes = []
-    print("最適なキャンバスサイズを計算中...")
+def determine_global_crop_ranges(df, target_multiple=16):
+    """
+    全画像のマスクから共通のROIバウンディングボックスを計算し、
+    指定の倍数(16または8)のサイズになるように境界を拡張する。
+    """
+    global_min = np.array([np.inf, np.inf, np.inf])
+    global_max_incl = np.array([-np.inf, -np.inf, -np.inf])
+    img_shape = None
+
+    print("全画像から共通のROI座標（Global Bounding Box）を計算中...")
     for _, row in tqdm(df.iterrows(), total=len(df)):
-        base_img = nib.load(row['base']).get_fdata()
         mask_img = load_and_preprocess_mask(row['mask'], threshold=100)
+        if img_shape is None:
+            img_shape = mask_img.shape # 元画像のサイズを取得（はみ出し防止用）
 
-        roi_array = base_img * (mask_img > 0.5)
-        cropped_roi = crop_roi(roi_array)
-        cropped_shapes.append(cropped_roi.shape)
+        min_c, max_c = get_non_zero_bounds(mask_img)
+        if min_c is not None:
+            global_min = np.minimum(global_min, min_c)
+            global_max_incl = np.maximum(global_max_incl, max_c)
     
-    max_dims = np.max(cropped_shapes, axis=0)
-    canvas_shape = tuple(math.ceil(d / 16) * 16 for d in max_dims)
-    return canvas_shape
+    global_min = global_min.astype(int)
+    # スライシングのために最大値は +1 (排他的) にしておく
+    global_max_excl = global_max_incl.astype(int) + 1 
 
-def create_dataset(df, mode, target_columns, canvas_shape=None):
+    current_sizes = global_max_excl - global_min
+    # target_multipleの倍数に切り上げ
+    target_sizes = np.ceil(current_sizes / target_multiple).astype(int) * target_multiple
+
+    diffs = target_sizes - current_sizes
+    pad_before = diffs // 2
+    pad_after = diffs - pad_before
+
+    new_min = global_min - pad_before
+    new_max_excl = global_max_excl + pad_after
+
+    # 元画像の端を超えないように補正するロジック
+    for i in range(3):
+        if new_min[i] < 0:
+            # 左にはみ出した分を右に回す
+            new_max_excl[i] += abs(new_min[i])
+            new_min[i] = 0
+        if new_max_excl[i] > img_shape[i]:
+            # 右にはみ出した分を左に回す
+            new_min[i] -= (new_max_excl[i] - img_shape[i])
+            new_max_excl[i] = img_shape[i]
+            
+        # それでもはみ出る（ROIが画像サイズより大きい等）場合はゼロで防ぐ
+        new_min[i] = max(0, new_min[i])
+
+    ranges = [[int(new_min[i]), int(new_max_excl[i])] for i in range(3)]
+    target_shape = tuple(target_sizes)
+    
+    return ranges, target_shape
+
+def save_crop_metadata(json_path, roi_name, ranges, target_shape):
+    """
+    算出した座標とサイズをJSONファイルに追記（既存データ保持）で保存する。
+    """
+    data = {}
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            pass # ファイルが空、または壊れている場合は空の辞書からスタート
+
+    data[roi_name] = {
+        "crop_ranges": {
+            "x": ranges[0],
+            "y": ranges[1],
+            "z": ranges[2]
+        },
+        "target_shape": target_shape
+    }
+
+    # 親ディレクトリが存在しない場合は作成
+    os.makedirs(os.path.dirname(json_path), exist_ok=True)
+    
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+    print(f"メタデータをJSONに保存しました: {json_path}")
+
+def create_dataset(df, mode, target_columns, crop_ranges=None):
     images, features = [], []
     print(f"データセットを生成中 (モード: {mode})...")
     cols_to_extract = target_columns.copy()
@@ -112,11 +177,14 @@ def create_dataset(df, mode, target_columns, canvas_shape=None):
         roi_array = base_img * (mask_img > 0.5)
 
         if mode == 'crop_and_pad':
-            if canvas_shape is None:
-                raise ValueError("crop_and_padモードにはcanvas_shapeが必要です")
-            cropped = crop_roi(roi_array)
-            padded = pad_to_canvas(cropped, canvas_shape)
-            processed_img = normalize_intensity(padded)
+            if crop_ranges is None:
+                raise ValueError("crop_and_padモードにはcrop_rangesが必要です")
+            
+            # 従来のような「各画像のクロップ＆中央パディング」ではなく、
+            # 指定された「共通の絶対座標」での切り出しを行うだけでサイズが揃う
+            processed_img = crop_by_ranges(roi_array, crop_ranges)
+            processed_img = normalize_intensity(processed_img)
+            
         elif mode == 'simple_mask':
             processed_img = normalize_intensity(roi_array)
         else:

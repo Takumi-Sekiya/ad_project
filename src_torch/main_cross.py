@@ -10,7 +10,7 @@ from sklearn.model_selection import StratifiedKFold
 import torch
 
 # 既存モジュールのインポート
-from functions.data_handling import load_and_match_data, determine_target_canvas_size, create_dataset
+from functions.data_handling import load_and_match_data, determine_global_crop_ranges, save_crop_metadata, create_dataset
 from functions.utils import set_seed
 from functions.data_loader import get_datasets
 from functions.models import build_model
@@ -45,27 +45,16 @@ def override_config(config: dict, roi: str, target: str):
     return config
 
 def prepare_full_dataset(config: dict, base_dir: Path):
-    """
-    全データを読み込み、前処理を行って画像配列と特徴量DFを返す。
-    交差検証のループの前に一度だけ実行する。
-    """
     print("\n=== Phase 1: 全データの読み込みと前処理を開始 ===")
-    
     gen_cfg = config['dataset_generation']
-    
     processed_data_dir = base_dir / gen_cfg['raw_data_base_dir']
     csv_path = base_dir / gen_cfg['clinical_csv_path']
-
     allowed_diagnoses = gen_cfg.get('allowed_diagnoses', None)
     
     matched_df = load_and_match_data(
-        processed_data_dir, 
-        csv_path, 
-        gen_cfg['path_templates'], 
-        gen_cfg['columns_to_extract'],
-        allowed_diagnoses=allowed_diagnoses
+        processed_data_dir, csv_path, gen_cfg['path_templates'], 
+        gen_cfg['columns_to_extract'], allowed_diagnoses=allowed_diagnoses
     )
-    
     if matched_df.empty:
         raise ValueError("処理対象データが見つかりませんでした。")
     
@@ -73,17 +62,28 @@ def prepare_full_dataset(config: dict, base_dir: Path):
     matched_df = matched_df.dropna(subset=[target_var]).reset_index(drop=True)
     print(f"有効データ数: {len(matched_df)}名")
 
+    crop_ranges = None
     target_canvas_size = None
     if gen_cfg['roi_processing_mode'] == 'crop_and_pad':
-        target_canvas_size = determine_target_canvas_size(matched_df)
+        # --- 追加・変更部分 ---
+        crop_ranges, target_canvas_size = determine_global_crop_ranges(
+            matched_df, target_multiple=16  # ここを8にしたい場合は8に変更してください
+        )
+        print(f"決定した共通切り出し座標: {crop_ranges}")
         print(f"決定したキャンバスサイズ: {target_canvas_size}")
+
+        # JSONへの保存処理
+        roi_name = gen_cfg.get('mask_name', 'default_roi')
+        json_output_path = base_dir / gen_cfg['output_dir'] / "crop_metadata.json"
+        save_crop_metadata(str(json_output_path), roi_name, crop_ranges, target_canvas_size)
+        # ----------------------
 
     print("全画像のデータセット生成中...")
     img_all, features_all = create_dataset(
         matched_df,
         gen_cfg['roi_processing_mode'],
         gen_cfg['columns_to_extract'],
-        target_canvas_size
+        crop_ranges  # キャンバスサイズの代わりに共通座標を渡す
     )
     
     return img_all, features_all
