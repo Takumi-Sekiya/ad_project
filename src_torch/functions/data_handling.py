@@ -132,7 +132,7 @@ def determine_global_crop_ranges(df, target_multiple=16):
         new_min[i] = max(0, new_min[i])
 
     ranges = [[int(new_min[i]), int(new_max_excl[i])] for i in range(3)]
-    target_shape = tuple(target_sizes)
+    target_shape = tuple(int(x) for x in target_sizes)
     
     return ranges, target_shape
 
